@@ -7,7 +7,9 @@ from tqdm.notebook import trange
 from torchvision.transforms import Resize
 import random
 import torch.nn.functional as F
-
+from torchvision.models.resnet import resnet18
+import matplotlib.pyplot as plt
+import torchvision.transforms as transforms
 TRAIN_PATH = './ARC/data/training'
 EVAL_PATH = './ARC/data/evaluation'
 
@@ -53,7 +55,6 @@ def get_batches(tasks, group, shuffle=True, batch_size=16):
     else:
         XS = torch.zeros((num_batches, batch_size, 1, MAX_GRID, MAX_GRID), device=device)
         YS = torch.zeros((num_batches, batch_size, 1, MAX_GRID, MAX_GRID), device=device)
-
 
     batch_idx = 0
     while data_idx < len(tasks):
@@ -107,10 +108,14 @@ def show_examples(num = 4):
                     train_y = torch.round(train_y).squeeze(0).squeeze(0).squeeze(0)
                     train_x = train_x.squeeze(0).squeeze(0).squeeze(0)
             else:
+                # x = transforms.Lambda(lambda s:s.repeat(1, 3,1,1))(x)
                 y_hat = model(x)
+                # y_hat = y_hat["out"]
+                # y_hat = y_hat.mean(1).unsqueeze(1)
                 y_hat = torch.round(y_hat).view(MAX_GRID, MAX_GRID)
                 y = torch.round(y).view(MAX_GRID, MAX_GRID)
-                x = x.view(MAX_GRID, MAX_GRID)
+                # x = transforms.Grayscale()(x)
+                x=x.view(MAX_GRID, MAX_GRID)
                 train_y = y
                 train_x = x
 
@@ -174,7 +179,10 @@ def evaluate(model):
                         correct += 1
                     total += 1
             else:
+                # x = transforms.Lambda(lambda s:s.repeat(1, 3,1,1))(x)
                 y_hat = model(x)
+                # y_hat = y_hat["out"]
+                # y_hat = y_hat.mean(1).unsqueeze(1)
                 test_loss = criterion(y_hat/MAX_VALUE, y/MAX_VALUE)
                 for y_hat_, test_y_ in zip(y_hat, y):
                     if y_hat_.shape != test_y_.shape:
@@ -275,6 +283,8 @@ lr = 1e-5
 weight_decay=1e-5
 
 model = CNN(USE_ATTENTION)
+# model = resnet18(pretrained=True)
+# model = torch.hub.load('pytorch/vision:v0.10.0', 'fcn_resnet50', pretrained=True)
 model.to(device)
 
 pbar = trange(num_epochs)
@@ -308,7 +318,10 @@ for epoch in pbar:
             
             else:
                 # with parallelization, faster
+                # x = transforms.Lambda(lambda s:s.repeat(1, 3,1,1))(x)
                 y_hat = model(x)
+                # y_hat= y_hat["out"]
+                # y_hat = y_hat.mean(1).unsqueeze(1)
                 learn_loss = criterion(y_hat/MAX_VALUE, y/MAX_VALUE)
             
             learn_loss.backward()
