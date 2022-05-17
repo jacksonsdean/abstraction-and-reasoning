@@ -130,7 +130,7 @@ def build_model(task, max_iterations=50, verbose=False, task_id=0):
 #%%
 # testing
 
-per_task_iterations = 2
+per_task_iterations = 20
 
 num_correct = 0
 num_total = 0
