@@ -17,7 +17,7 @@ if not os.path.exists(TRAIN_PATH):
 MAX_GRID = 30
 MAX_INPUT_EXAMPLES = 10
 MAX_VALUE = 9
-USE_ATTENTION = True
+USE_ATTENTION = False
 USE_PADDING = True
 USE_RESIDUAL = False # causes overfitting
 
