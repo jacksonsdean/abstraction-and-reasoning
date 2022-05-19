@@ -32,7 +32,7 @@ training_tasks = sorted(os.listdir(TRAIN_PATH))
 #%% 
 def build_candidates(allowed_nodes=[identity], best_candidates=[], length_limit=4, nb_candidates=200):
     """
-    Create a poll of fresh candidates using the `allowed_nodes`.
+    Create a pool of fresh candidates using the `allowed_nodes`.
     
     The pool contain a mix of new single instructions programs
     and mutations of the best candidates.

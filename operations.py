@@ -107,7 +107,7 @@ def union(x):
             return []
 
     x = torch.stack(x)            
-    return [torch_bitwise_reduce(x)]
+    return [torch_bitwise_or_reduce(x)]
     
 def intersect(x):
     """ Compute the pixel intersection of all images in the list. """
