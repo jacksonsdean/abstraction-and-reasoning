@@ -139,7 +139,7 @@ pbar = trange(len(all_tasks))
 
 for task_id in pbar:
     num_total+=1
-    task_file = str((TRAIN_PATH if task_id < len(training_tasks) else EVAL_PATH) + "/" + training_tasks[task_id%400])
+    task_file = str((TRAIN_PATH if task_id < len(training_tasks) else EVAL_PATH) + "/" + all_tasks[task_id])
     with open(task_file, 'r') as f:
         task = json.load(f)
 
