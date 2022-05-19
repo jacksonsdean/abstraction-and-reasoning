@@ -21,11 +21,8 @@ if not os.path.exists(TRAIN_PATH):
 
 training_tasks = sorted(os.listdir(TRAIN_PATH))
 
-#%%
-print("Fitness evaluation:", evaluate_fitness([groupByColor, cropToContent], task['train']))
-
 #%% 
-def build_candidates(allowed_nodes=[identity], best_candidates=[], nb_candidates=200):
+def build_candidates(allowed_nodes=[identity], best_candidates=[], length_limit=4, nb_candidates=200):
     """
     Create a poll of fresh candidates using the `allowed_nodes`.
     
@@ -33,7 +30,6 @@ def build_candidates(allowed_nodes=[identity], best_candidates=[], nb_candidates
     and mutations of the best candidates.
     """
     new_candidates = []
-    length_limit = 4 # Maximal length of a program
     
     def random_node():
         return random.choice(allowed_nodes)
@@ -60,18 +56,10 @@ def build_candidates(allowed_nodes=[identity], best_candidates=[], nb_candidates
     random.shuffle(new_candidates)
     return new_candidates[:nb_candidates]
 
-# Test the function by building some candidates
-len(build_candidates(allowed_nodes=[identity], best_candidates=[[identity]], nb_candidates=42))
 
 #%%
-def build_model(task, max_iterations=50, verbose=False, task_id=0):
-    candidates_nodes = [
-        tail, init, union, intersect,
-        sortByColor, sortByWeight, reverse,
-        cropToContent, groupByColor, splitH,
-        negative
-    ]
-
+def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbose=False, task_id=0):
+    
     show_progress = False
     if verbose:
         print("Candidates nodes are:", [program_desc([n]) for n in candidates_nodes])
@@ -87,14 +75,14 @@ def build_model(task, max_iterations=50, verbose=False, task_id=0):
             print("-" * 10)
         
         # Create a list of candidates
-        candidates = build_candidates(candidates_nodes, best_candidates.values())
+        candidates = build_candidates(candidates_nodes, best_candidates.values(), length_limit=length_limit)
         
         # Keep candidates with best fitness.
         # They will be stored in the `best_candidates` dictionary
         # where the key of each program is its fitness score.
         for candidate in candidates:
             score = evaluate_fitness(candidate, task)
-            is_uncomparable = True # True if we cannot compare the two candidate's scores
+            is_incomparable = True # True if we cannot compare the two candidate's scores
             
             # Compare the new candidate to the existing best candidates
             best_candidates_items = list(best_candidates.items())
@@ -103,10 +91,10 @@ def build_model(task, max_iterations=50, verbose=False, task_id=0):
                     # Remove previous best candidate and add the new one
                     del best_candidates[best_score]
                     best_candidates[score] = candidate
-                    is_uncomparable = False # The candidates are comparable
+                    is_incomparable = False # The candidates are comparable
                 if product_less(best_score, score) or best_score == score:
-                    is_uncomparable = False # The candidates are comparable
-            if is_uncomparable: # The two candidates are uncomparable
+                    is_incomparable = False # The candidates are comparable
+            if is_incomparable: # The two candidates are incomparable
                 best_candidates[score] = candidate
 
         # For each best candidate, we look if we have an answer
@@ -114,7 +102,7 @@ def build_model(task, max_iterations=50, verbose=False, task_id=0):
             if is_solution(program, task):
                 return program
             
-        # Give some informations by selecting a random candidate
+        # Give some information by selecting a random candidate
         if verbose:
             print("Best candidates length:", len(best_candidates))
             random_candidate_score = random.choice(list(best_candidates.keys()))
@@ -130,10 +118,17 @@ def build_model(task, max_iterations=50, verbose=False, task_id=0):
 #%%
 # testing
 
-per_task_iterations = 20
+per_task_iterations = 40
+length_limit = 5 # Maximal length of a program
 
 num_correct = 0
 num_total = 0
+candidates_nodes = [
+        tail, init, union, intersect,
+        sortByColor, sortByWeight, reverse,
+        cropToContent, groupByColor, splitH,
+        negative, color_shift
+    ]
 
 pbar = trange(len(training_tasks))
 
@@ -143,7 +138,7 @@ for task_id in pbar:
     with open(task_file, 'r') as f:
         task = json.load(f)
 
-    program = build_model(task['train'], max_iterations=per_task_iterations, verbose=False, task_id=task_id)
+    program = build_model(task['train'], candidates_nodes, max_iterations=per_task_iterations, length_limit=length_limit, verbose=False, task_id=task_id)
     pbar.set_description_str(f"{num_correct/num_total}")
     if program is None:
         # print("No program was found")

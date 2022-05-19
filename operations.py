@@ -1,10 +1,12 @@
 import itertools
 import torch
 from typing import List
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 # from: https://www.kaggle.com/code/zenol42/dsl-and-genetic-algorithm-applied-to-arc/notebook
 
 def torch_bitwise_reduce(x):
-    r = torch.tensor(0)
+    r = torch.tensor(0).to(device)
     for i in range(len(x)):
         r = torch.bitwise_or(r, x[i])
     return r.type(torch.bool)
@@ -50,6 +52,18 @@ def negative_unlifted(pixmap):
     negative = torch.logical_not(pixmap)
     color = max(pixmap.max(), 1)
     return [negative * color] 
+
+def color_shift_unlifted(pixmap):
+    """ Shift the color of an image by a random amount. """
+    max_color = pixmap.max()
+    max_color = max_color if max_color > 0 else 1
+    shift = 1
+    # Shift the color of the image
+    pixmap = [(pixmap + shift) % max_color]
+
+
+    return pixmap
+
 #%%
 # multiple image operations
 def tail(x):
@@ -120,3 +134,4 @@ cropToContent = lift(crop_to_content_unlifted)
 groupByColor = lift(group_by_color_unlifted)
 splitH = lift(split_h_unlifted)
 negative = lift(negative_unlifted)
+color_shift = lift(color_shift_unlifted)

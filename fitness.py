@@ -1,8 +1,11 @@
 from typing import List
 import torch
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 def evaluate(program: List[callable], input_image: torch.tensor):
     if not isinstance(input_image, torch.Tensor):
-        input_image = torch.tensor(input_image)
+        input_image = torch.tensor(input_image).to(device)
     assert type(input_image) == torch.Tensor
     
     # Apply each function on the image
@@ -35,7 +38,7 @@ def height_fitness(predicted, expected_output):
 def activated_pixels_fitness(p, e):
     """ How close the predicted image to have the right pixels. Less is better."""
     shape = (max(p.shape[0], e.shape[0]), max(p.shape[1], e.shape[1]))
-    diff = torch.zeros(shape, dtype=torch.uint8)
+    diff = torch.zeros(shape, dtype=torch.uint8, device=device)
     diff[0:p.shape[0], 0:p.shape[1]] = (p > 0).type(torch.uint8) 
     diff[0:e.shape[0], 0:e.shape[1]] -= (e > 0).type(torch.uint8) 
     
@@ -54,8 +57,8 @@ fitness_functions = [colors_fitness, activated_pixels_fitness, height_fitness, w
 
 def product_less(a, b):
     """ Return True iff the two tuples a and b respect a<b for the partial order. """
-    a = torch.tensor(a)
-    b = torch.tensor(b)
+    a = torch.tensor(a).to(device)
+    b = torch.tensor(b).to(device)
     return (a < b).all()
 
 def evaluate_fitness(program, task):
@@ -64,8 +67,8 @@ def evaluate_fitness(program, task):
     
     # For each sample
     for sample in task:
-        i = torch.tensor(sample['input'])
-        o = torch.tensor(sample['output'])
+        i = torch.tensor(sample['input']).to(device)
+        o = torch.tensor(sample['output']).to(device)
         
         # For each fitness function
         for index, fitness_function in enumerate(fitness_functions):

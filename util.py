@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib import colors
 import torch
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 from fitness import evaluate
 
@@ -74,8 +75,8 @@ def are_two_images_equals(a, b):
 
 def is_solution(program, task, verbose=True):
     for sample in task: # For each pair input/output
-        i = torch.tensor(sample['input'])
-        o = torch.tensor(sample['output'])
+        i = torch.tensor(sample['input']).to(device)
+        o = torch.tensor(sample['output']).to(device)
 
         # Evaluate the program on the input
         images = evaluate(program, i)
