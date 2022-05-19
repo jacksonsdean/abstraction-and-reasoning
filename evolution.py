@@ -1,14 +1,32 @@
+import os
+!rm -rf abstraction-and-reasoning
+if not os.path.exists("abstraction-and-reasoning"): 
+    !git clone --recurse-submodules https://github.com/jacksonsdean/abstraction-and-reasoning.git
+    !git checkout evolution
+%cd "/content/abstraction-and-reasoning"
+!pwd
+!ls
 # using code from: https://www.kaggle.com/code/zenol42/dsl-and-genetic-algorithm-applied-to-arc/notebook
 #%%
 import json
-import os
 import random
 import torch
-from tqdm.notebook import trange
+from tqdm import trange
 
 from operations import *
 from util import *
 from fitness import *
+
+
+all_operations = [
+    crop_to_content,
+    group_by_color,
+    split_h,
+    negative,
+    color_shift,
+    tail, init, union, intersect,
+    sortByColor, sortByWeight, reverse,
+]
 
 #%%
 # Data
@@ -118,17 +136,12 @@ def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbo
 #%%
 # testing
 
-per_task_iterations = 40
-length_limit = 5 # Maximal length of a program
+per_task_iterations = 5
+length_limit = 4 # Maximal length of a program
 
 num_correct = 0
 num_total = 0
-candidates_nodes = [
-        tail, init, union, intersect,
-        sortByColor, sortByWeight, reverse,
-        cropToContent, groupByColor, splitH,
-        negative, color_shift
-    ]
+candidates_nodes = all_operations
 
 pbar = trange(len(training_tasks))
 

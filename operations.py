@@ -1,15 +1,21 @@
+from functools import partial
 import itertools
 import torch
 from typing import List
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = "cpu"
 
 # from: https://www.kaggle.com/code/zenol42/dsl-and-genetic-algorithm-applied-to-arc/notebook
 
-def torch_bitwise_reduce(x):
+def torch_bitwise_or_reduce(x):
+    """ Compute the pixelwise or of all images in the list. """
     r = torch.tensor(0).to(device)
     for i in range(len(x)):
         r = torch.bitwise_or(r, x[i])
     return r.type(torch.bool)
+
 
 def identity(x):
     return x
@@ -53,17 +59,29 @@ def negative_unlifted(pixmap):
     color = max(pixmap.max(), 1)
     return [negative * color] 
 
-def color_shift_unlifted(pixmap):
+
+
+# Added by Jackson -------------------------------------------------------------
+def color_shift_unlifted(pixmap, shift=1, shift_background=False):
     """ Shift the color of an image by a random amount. """
-    max_color = pixmap.max()
-    max_color = max_color if max_color > 0 else 1
-    shift = 1
+    max_color = 9
+    if not shift_background:
+        pixmap[pixmap==0] = -1
     # Shift the color of the image
     pixmap = [(pixmap + shift) % max_color]
-
-
     return pixmap
 
+def swap_color_unlifted(pixmap, color_in, color_out):
+    """_summary_
+    Swap the color of an image.
+    """
+    # Replace the color of the image
+    indices = (pixmap == color_in)
+    pixmap[indices] = color_out
+    return [pixmap]
+
+
+#------------------------------------------------------------------------------
 #%%
 # multiple image operations
 def tail(x):
@@ -122,16 +140,27 @@ def reverse(x):
 #%% 
 def lift(fct):
     # Lift the function
-    def lifted_function(xs):
-        list_of_results = [fct(x) for x in xs]
+    def lifted_function(xs, **kwargs):
+        list_of_results = [fct(x, **kwargs) for x in xs]
         return list(itertools.chain(*list_of_results))
     # Give a nice name to the lifted function
     import re
     lifted_function.__name__ = re.sub('_unlifted$', '_lifted', fct.__name__)
     return lifted_function
 
-cropToContent = lift(crop_to_content_unlifted)
-groupByColor = lift(group_by_color_unlifted)
-splitH = lift(split_h_unlifted)
+crop_to_content = lift(crop_to_content_unlifted)
+group_by_color = lift(group_by_color_unlifted)
+split_h = lift(split_h_unlifted)
 negative = lift(negative_unlifted)
 color_shift = lift(color_shift_unlifted)
+swap_color = lift(swap_color_unlifted)
+
+
+
+# operations with parameters:
+
+# swap color:
+for in_out in itertools.combinations(range(10), 2):
+    func = partial(swap_color, color_in=in_out[0], color_out=in_out[1])
+    func.__name__ = f"swap_color:{in_out[0]}->{in_out[1]}"
+    all_operations.append(func)        

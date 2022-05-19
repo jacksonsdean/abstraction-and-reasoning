@@ -1,7 +1,8 @@
 from typing import List
 import torch
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = "cpu"
 
 def evaluate(program: List[callable], input_image: torch.tensor):
     if not isinstance(input_image, torch.Tensor):
