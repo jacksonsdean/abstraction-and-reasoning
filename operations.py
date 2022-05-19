@@ -157,6 +157,16 @@ swap_color = lift(swap_color_unlifted)
 
 
 
+all_operations = [
+    crop_to_content,
+    group_by_color,
+    split_h,
+    negative,
+    color_shift,
+    tail, init, union, intersect,
+    sortByColor, sortByWeight, reverse,
+]
+
 # operations with parameters:
 
 # swap color:

@@ -1,11 +1,11 @@
 import os
-%cd /content
-!rm -rf "abstraction-and-reasoning"
-!git clone --recurse-submodules https://github.com/jacksonsdean/abstraction-and-reasoning.git
+# %cd /content
+# !rm -rf "abstraction-and-reasoning"
+# !git clone --recurse-submodules https://github.com/jacksonsdean/abstraction-and-reasoning.git
 %cd "/content/abstraction-and-reasoning"
-!git checkout evolution
-!pwd
-!ls
+# !git checkout evolution
+# !pwd
+# !ls
 # using code from: https://www.kaggle.com/code/zenol42/dsl-and-genetic-algorithm-applied-to-arc/notebook
 #%%
 import json
@@ -17,16 +17,6 @@ from operations import *
 from util import *
 from fitness import *
 
-
-all_operations = [
-    crop_to_content,
-    group_by_color,
-    split_h,
-    negative,
-    color_shift,
-    tail, init, union, intersect,
-    sortByColor, sortByWeight, reverse,
-]
 
 #%%
 # Data
