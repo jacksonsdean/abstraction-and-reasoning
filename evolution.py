@@ -1,9 +1,9 @@
 import os
-!rm -rf abstraction-and-reasoning
-if not os.path.exists("abstraction-and-reasoning"): 
-    !git clone --recurse-submodules https://github.com/jacksonsdean/abstraction-and-reasoning.git
-    !git checkout evolution
+%cd /content
+!rm -rf "abstraction-and-reasoning"
+!git clone --recurse-submodules https://github.com/jacksonsdean/abstraction-and-reasoning.git
 %cd "/content/abstraction-and-reasoning"
+!git checkout evolution
 !pwd
 !ls
 # using code from: https://www.kaggle.com/code/zenol42/dsl-and-genetic-algorithm-applied-to-arc/notebook
