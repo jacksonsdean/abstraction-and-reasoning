@@ -28,7 +28,9 @@ if not os.path.exists(TRAIN_PATH):
     !git clone https://github.com/fchollet/ARC.git
 
 training_tasks = sorted(os.listdir(TRAIN_PATH))
+eval_tasks = sorted(os.listdir(EVAL_PATH))
 
+all_tasks = training_tasks + eval_tasks
 #%% 
 def build_candidates(allowed_nodes=[identity], best_candidates=[], length_limit=4, nb_candidates=200):
     """
@@ -126,18 +128,18 @@ def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbo
 #%%
 # testing
 
-per_task_iterations = 5
+per_task_iterations = 20
 length_limit = 4 # Maximal length of a program
 
 num_correct = 0
 num_total = 0
 candidates_nodes = all_operations
 
-pbar = trange(len(training_tasks))
+pbar = trange(len(all_tasks))
 
 for task_id in pbar:
     num_total+=1
-    task_file = str(TRAIN_PATH + "/" + training_tasks[task_id])
+    task_file = str((TRAIN_PATH if task_id < len(training_tasks) else EVAL_PATH) + "/" + training_tasks[task_id%400])
     with open(task_file, 'r') as f:
         task = json.load(f)
 
