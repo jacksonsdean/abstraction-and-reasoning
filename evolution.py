@@ -31,6 +31,9 @@ training_tasks = sorted(os.listdir(TRAIN_PATH))
 eval_tasks = sorted(os.listdir(EVAL_PATH))
 
 all_tasks = training_tasks + eval_tasks
+
+
+
 #%% 
 def build_candidates(allowed_nodes=[identity], best_candidates=[], length_limit=4, nb_candidates=200):
     """
@@ -128,7 +131,7 @@ def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbo
 #%%
 # testing
 
-per_task_iterations = 20
+per_task_iterations = 3
 length_limit = 4 # Maximal length of a program
 
 num_correct = 0
@@ -156,3 +159,9 @@ for task_id in pbar:
         # print("Is solution:", is_solution(program, task['train']))
         # results = evaluate(program=program, input_image=task['test'][0]['input'])
         # show_image_list([task['test'][0]['input'], results[1]])
+
+
+#%%
+import time
+with open("./results.txt",'w') as f:
+    f.write(f"{time.time()}: {num_correct/num_total}")
