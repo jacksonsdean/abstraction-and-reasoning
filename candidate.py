@@ -1,14 +1,16 @@
 import copy
+import random
+import numpy as np
 import torch
 
-from operations import all_operations
+from operations import all_operations, union
 from util import plot_one, show_image_list
 
 class Node():
     def __init__(self, activation):
         self.activation = activation
-        self.sum_inputs = torch.tensor(0)
-        self.current_output = torch.tensor(0)
+        self.sum_inputs = []
+        self.current_output = []
 
 class Connection():
     innovation = 0
@@ -23,8 +25,8 @@ class Connection():
         return iter([self.from_node, self.to_node])
 
 def random_weight():
-    scale = torch.rand(1)[0] * 2 - 1
-    return scale * 1
+    scale = 2.0
+    return random.uniform(-scale,scale)
 
 def evaluate(input_sample, input_nodes, output_nodes, connections):
     """Evaluate the network to get data in parallel"""
@@ -40,23 +42,27 @@ def evaluate(input_sample, input_nodes, output_nodes, connections):
 
             # initialize the sum_inputs for this node
             if layer == layers[0]:
-                node.current_output = input_sample
+                node.current_output = [input_sample]
             else:
-                node.current_output = 0
+                node.current_output = [] # reinitialize the node's current_output
 
             for cx in incoming:
                 inputs = cx.from_node.current_output
-                if not isinstance(inputs, torch.Tensor):
-                    inputs = torch.stack(inputs).type(torch.float32)
-                 
-                # remove dimensions of size 1
-                while inputs.shape[0] == 1:
-                    inputs = inputs.squeeze(0)
+                for i in range(len(inputs)):
+                    inputs[i].type(torch.float32)
+                    inputs[i] *= cx.weight 
+                    if i >= len(node.current_output):
+                        node.current_output.append(inputs[i])
+                    else:
+                        # node.current_output[i] += inputs[i]
+                        node.current_output[i] = torch.add(node.current_output[i], inputs[i])
 
-                inputs *= cx.weight 
-                node.current_output += inputs
 
-            node.current_output = node.activation([node.current_output])  # apply activation
+
+            # node.current_output = [x for x in node.current_output]
+            # print(node.current_output)
+            node.current_output = node.activation(node.current_output)  # apply activation
+
 
     # collect outputs from the last layer
     outputs = [o.current_output for o in output_nodes]
@@ -189,18 +195,28 @@ if __name__ == "__main__":
 
     # test the network
     # create the network
-    fct0 = all_operations[0]
-    fct1 = all_operations[1]
-    input_nodes = [Node(fct1) for i in range(1)]
-    hidden_nodes = [Node(fct0) for i in range(2)]
-    output_nodes = [Node(fct0) for i in range(1)]
+    input_nodes = [Node(random.choice(all_operations)) for i in range(1)]
+    hidden_nodes_0 = [Node(random.choice(all_operations)) for i in range(2)]
+    hidden_nodes_1 = [Node(random.choice(all_operations)) for i in range(2)]
+    output_nodes = [Node(random.choice(all_operations)) for i in range(1)]
+    print("input",[n.activation.__name__ for n in input_nodes])
+    print("hidden0",[n.activation.__name__ for n in hidden_nodes_0])
+    print("hidden1",[n.activation.__name__ for n in hidden_nodes_1])
+    print("output",[n.activation.__name__ for n in output_nodes])
+    
     connections = [
-            Connection(input_nodes[0], hidden_nodes[0],  1),#random_weight()),        
-            Connection(input_nodes[0], hidden_nodes[1],  1),#random_weight()),        
-            Connection(hidden_nodes[0], output_nodes[0], 1),#random_weight()),        
-            Connection(hidden_nodes[1], output_nodes[0], 1),#random_weight()),        
     ]
 
+    for inp in input_nodes:
+        for h0 in hidden_nodes_0:
+            connections.append(Connection(inp, h0, 1))
+    for h0 in hidden_nodes_0:
+        for h1 in hidden_nodes_1:
+            connections.append(Connection(h0, h1, 1))
+    for h1 in hidden_nodes_1:
+        for outp in output_nodes:
+            connections.append(Connection(h1, outp, 1))
+    print(np.mean([c.weight for c in connections]))
 
     TRAIN_PATH = './ARC/data/training'
     training_tasks = sorted(os.listdir(TRAIN_PATH))
@@ -218,12 +234,17 @@ if __name__ == "__main__":
         # For each fitness function
         for index, fitness_function in enumerate(fitness_functions):
             images = evaluate(copy.deepcopy(i), input_nodes, output_nodes, connections)
-            # images = [img for img in images if img.shape[0] > 0 and img.shape[1] > 0]
-            if not isinstance(images[0], torch.Tensor):
-                images[0] = torch.stack(images[0])
             
+            for img in range(len(images)):
+                if not isinstance(images[img], torch.Tensor):
+                    images[img] = torch.stack(images[img])
+            images = [img for img in images if img.shape[0] > 0 and img.shape[1] > 0]
+
             # remove dimensions of size 1
             while images[0].shape[0] == 1:
+                images[0] = images[0][0]
+
+            if len(images[0].shape) == 3:
                 images[0] = images[0][0]
 
             if images == []: # Penalize no prediction!
