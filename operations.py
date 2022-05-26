@@ -76,7 +76,7 @@ def swap_color_unlifted(pixmap, color_in, color_out):
     Swap the color of an image.
     """
     # Replace the color of the image
-    indices = (pixmap == color_in)
+    indices = (torch.round(pixmap) == color_in)
     pixmap[indices] = color_out
     return [pixmap]
 

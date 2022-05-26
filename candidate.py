@@ -1,12 +1,14 @@
+import copy
 import torch
 
 from operations import all_operations
+from util import plot_one, show_image_list
 
 class Node():
     def __init__(self, activation):
         self.activation = activation
-        self.sum_inputs = []
-        self.current_output = []
+        self.sum_inputs = torch.tensor(0)
+        self.current_output = torch.tensor(0)
 
 class Connection():
     innovation = 0
@@ -21,7 +23,8 @@ class Connection():
         return iter([self.from_node, self.to_node])
 
 def random_weight():
-    return torch.rand(1)[0] * 2 - 1
+    scale = torch.rand(1)[0] * 2 - 1
+    return scale * 1
 
 def evaluate(input_sample, input_nodes, output_nodes, connections):
     """Evaluate the network to get data in parallel"""
@@ -34,24 +37,29 @@ def evaluate(input_sample, input_nodes, output_nodes, connections):
             # find incoming connections
             incoming = list(filter(lambda x, n=node: x.to_node == n, connections))
             # initialize the node's sum_inputs
-            if layer == layers[0]:
-                node.current_output = input_sample
-            # else:
-                # starting_input = torch.tensor([node.current_output])
 
             # initialize the sum_inputs for this node
+            if layer == layers[0]:
+                node.current_output = input_sample
+            else:
+                node.current_output = 0
 
             for cx in incoming:
                 inputs = cx.from_node.current_output
-                # inputs *= cx.weight # TODO
-                node.current_output = inputs # TODO +=
+                if not isinstance(inputs, torch.Tensor):
+                    inputs = torch.stack(inputs).type(torch.float32)
+                 
+                # remove dimensions of size 1
+                while inputs.shape[0] == 1:
+                    inputs = inputs.squeeze(0)
 
-            if len(incoming) > 0:
-                # print(node.current_output)
-                node.current_output = node.activation(node.current_output)  # apply activation
-    
+                inputs *= cx.weight 
+                node.current_output += inputs
+
+            node.current_output = node.activation([node.current_output])  # apply activation
+
     # collect outputs from the last layer
-    outputs = output_nodes[0].current_output
+    outputs = [o.current_output for o in output_nodes]
     # outputs = torch.tensor([node.current_output for node in output_nodes])
     return outputs
 
@@ -172,42 +180,56 @@ def feed_forward_layers(inputs, outputs, connections):
 
 
 if __name__ == "__main__":
-
-    score = torch.zeros((len(fitness_functions)))
-    
-   
-    
+    from util import plot_task
     import os
     import json
     from fitness import fitness_functions
     device = 'cpu'
+    score = torch.zeros((len(fitness_functions)))
 
     # test the network
     # create the network
-    fct = all_operations[0]
-    input_nodes = [Node(fct) for i in range(1)]
-    output_nodes = [Node(fct) for i in range(1)]
-    connections = [Connection(input_nodes[0], output_nodes[0], random_weight()),
-                #    Connection(input_nodes[1], output_nodes[0], random_weight()),
+    fct0 = all_operations[0]
+    fct1 = all_operations[1]
+    input_nodes = [Node(fct1) for i in range(1)]
+    hidden_nodes = [Node(fct0) for i in range(2)]
+    output_nodes = [Node(fct0) for i in range(1)]
+    connections = [
+            Connection(input_nodes[0], hidden_nodes[0],  1),#random_weight()),        
+            Connection(input_nodes[0], hidden_nodes[1],  1),#random_weight()),        
+            Connection(hidden_nodes[0], output_nodes[0], 1),#random_weight()),        
+            Connection(hidden_nodes[1], output_nodes[0], 1),#random_weight()),        
     ]
+
 
     TRAIN_PATH = './ARC/data/training'
     training_tasks = sorted(os.listdir(TRAIN_PATH))
-    task = training_tasks[0]
+    task = training_tasks[1]
     task_path = os.path.join(TRAIN_PATH, task)
     with open(task_path, 'r') as f:
-        task = json.load(f)
-    task = task['train']
+        task_ = json.load(f)
+    task = task_['train']
      # For each sample
     for sample in task:
         i = torch.tensor(sample['input']).to(device)
         o = torch.tensor(sample['output']).to(device)
-        
+        i = i.type(torch.FloatTensor)
+        o = o.type(torch.FloatTensor)
         # For each fitness function
         for index, fitness_function in enumerate(fitness_functions):
-            images = evaluate(i, input_nodes, output_nodes, connections)
+            images = evaluate(copy.deepcopy(i), input_nodes, output_nodes, connections)
+            # images = [img for img in images if img.shape[0] > 0 and img.shape[1] > 0]
+            if not isinstance(images[0], torch.Tensor):
+                images[0] = torch.stack(images[0])
+            
+            # remove dimensions of size 1
+            while images[0].shape[0] == 1:
+                images[0] = images[0][0]
+
             if images == []: # Penalize no prediction!
                 score[index] += 500
             else: # Take only the score of the first output
-                score[index] = fitness_function(images, o)
+                score[index] = fitness_function(images[0], o)
+        show_image_list([i, images[0], o])
+    plot_task(task_)
     print(tuple(score))

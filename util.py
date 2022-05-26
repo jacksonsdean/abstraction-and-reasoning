@@ -56,8 +56,14 @@ def show_image_list(images):
     p = plt.figure().subplots(1, len(images))
     if len(images) > 1:
         for i, image in enumerate(images):
+            p[i].grid(True,which='both',color='lightgrey', linewidth=0.5)    
+            p[i].set_yticks([x-0.5 for x in range(1+len(image))])
+            p[i].set_xticks([x-0.5 for x in range(1+len(image[0]))])   
             p[i].imshow(image, cmap=cmap, norm=norm)
     elif len(images) == 1:
+        p[i].grid(True,which='both',color='lightgrey', linewidth=0.5)    
+        p[i].set_yticks([x-0.5 for x in range(1+len(image))])
+        p[i].set_xticks([x-0.5 for x in range(1+len(image[0]))])   
         p.imshow(images[0], cmap=cmap, norm=norm)
 
 # human readable description of the program
