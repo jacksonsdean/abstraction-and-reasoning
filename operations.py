@@ -11,7 +11,8 @@ device = "cpu"
 
 def torch_bitwise_or_reduce(x):
     """ Compute the pixelwise or of all images in the list. """
-    r = torch.tensor(0).to(device)
+    r = torch.tensor(0).to(device).type(torch.uint8)
+    x = x.type(torch.uint8)
     for i in range(len(x)):
         r = torch.bitwise_or(r, x[i])
     return r.type(torch.bool)
@@ -55,6 +56,8 @@ def split_h_unlifted(pixmap):
 
 def negative_unlifted(pixmap):
     """ Compute the negative of an image (and conserve the color) """
+    if pixmap.numel() == 0:
+        return []
     negative = torch.logical_not(pixmap)
     color = max(pixmap.max(), 1)
     return [negative * color] 
@@ -75,6 +78,7 @@ def swap_color_unlifted(pixmap, color_in, color_out):
     """_summary_
     Swap the color of an image.
     """
+    pixmap = pixmap.type(torch.float32)
     # Replace the color of the image
     indices = (torch.round(pixmap) == color_in)
     pixmap[indices] = color_out

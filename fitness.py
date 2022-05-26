@@ -30,14 +30,20 @@ def tensor_intersect1d(a, b):
 
 def width_fitness(predicted, expected_output):
     """ How close the predicted image is to have the right width. Less is better."""
+    if len(predicted.shape)<2:
+       return 100
     return abs(predicted.shape[0] - expected_output.shape[0])
 
 def height_fitness(predicted, expected_output):
     """ How close the predicted image is to have the right height. Less is better."""
+    if len(predicted.shape)<2:
+       return 100
     return abs(predicted.shape[1] - expected_output.shape[1])
 
 def activated_pixels_fitness(p, e):
     """ How close the predicted image to have the right pixels. Less is better."""
+    if len(p.shape)<2:
+       return 100
     shape = (max(p.shape[0], e.shape[0]), max(p.shape[1], e.shape[1]))
     diff = torch.zeros(shape, dtype=torch.uint8, device=device)
     diff[0:p.shape[0], 0:p.shape[1]] = (p > 0).type(torch.uint8) 
@@ -57,9 +63,9 @@ fitness_functions = [colors_fitness, activated_pixels_fitness, height_fitness, w
 
 
 def product_less(a, b):
-    """ Return True iff the two tuples a and b respect a<b for the partial order. """
-    a = torch.tensor(a).to(device)
-    b = torch.tensor(b).to(device)
+    """ Return True if the two tuples a and b respect a<b for the partial order. """
+    # a = torch.tensor(a).to(device)
+    # b = torch.tensor(b).to(device)
     return (a < b).all()
 
 def evaluate_fitness(program, task):

@@ -11,12 +11,12 @@ import os
 import json
 import random
 import torch
-from tqdm import trange
+from tqdm.notebook import trange
 
 from operations import *
 from util import *
 from fitness import *
-
+from candidate import *
 
 #%%
 # Data
@@ -35,7 +35,7 @@ all_tasks = training_tasks + eval_tasks
 
 
 #%% 
-def build_candidates(allowed_nodes=[identity], best_candidates=[], length_limit=4, nb_candidates=200):
+def build_candidates(best_candidates=[], length_limit=4, nb_candidates=100):
     """
     Create a pool of fresh candidates using the `allowed_nodes`.
     
@@ -44,26 +44,16 @@ def build_candidates(allowed_nodes=[identity], best_candidates=[], length_limit=
     """
     new_candidates = []
     
-    def random_node():
-        return random.choice(allowed_nodes)
-    
     # Until we have enougth new candidates
     while(len(new_candidates) < nb_candidates):
         # Add 10 new programs
         for i in range(5):
-            new_candidates += [[random_node()]]
+            new_candidates += [Candidate()]
         
         # Create new programs based on each best candidate
         for best_program in best_candidates:
-            # Add one op on its right but limit the length of the program
-            if len(best_program) < length_limit - 1:
-                new_candidates += [[random_node()] + best_program]
-            # Add one op on its left but limit the length of the program
-            if len(best_program) < length_limit - 1:
-                new_candidates += [best_program + [random_node()]]
-            # Mutate one instruction of the existing program
-            new_candidates += [list(best_program)]
-            new_candidates[-1][random.randrange(0, len(best_program))] = random_node()
+            new_candidates += [copy.deepcopy(best_program)]
+            new_candidates[-1].mutate()
    
     # Truncate if we have too many candidates
     random.shuffle(new_candidates)
@@ -71,9 +61,7 @@ def build_candidates(allowed_nodes=[identity], best_candidates=[], length_limit=
 
 
 #%%
-def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbose=False, task_id=0):
-    
-    show_progress = False
+def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbose=False, task_id=0, nb_candidates=100,show_progress=False):
     if verbose:
         print("Candidates nodes are:", [program_desc([n]) for n in candidates_nodes])
         print()
@@ -88,13 +76,11 @@ def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbo
             print("-" * 10)
         
         # Create a list of candidates
-        candidates = build_candidates(candidates_nodes, best_candidates.values(), length_limit=length_limit)
-        
-        # Keep candidates with best fitness.
+        candidates = build_candidates(best_candidates.values(), nb_candidates=nb_candidates)
         # They will be stored in the `best_candidates` dictionary
         # where the key of each program is its fitness score.
-        for candidate in candidates:
-            score = evaluate_fitness(candidate, task)
+        for _, candidate in enumerate(candidates):
+            score = candidate.evaluate_fitness(task)
             is_incomparable = True # True if we cannot compare the two candidate's scores
             
             # Compare the new candidate to the existing best candidates
@@ -105,7 +91,7 @@ def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbo
                     del best_candidates[best_score]
                     best_candidates[score] = candidate
                     is_incomparable = False # The candidates are comparable
-                if product_less(best_score, score) or best_score == score:
+                if product_less(best_score, score) or (best_score == score).all():
                     is_incomparable = False # The candidates are comparable
             if is_incomparable: # The two candidates are incomparable
                 best_candidates[score] = candidate
@@ -122,8 +108,8 @@ def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbo
             print("Random candidate score:", random_candidate_score, "average:", ((random_candidate_score[0] + random_candidate_score[1] + random_candidate_score[2]) / 3).item())
             print("Random candidate implementation:", program_desc(best_candidates[random_candidate_score]))
         
-        top_score = torch.tensor([torch.tensor(c).mean() for c in list(best_candidates.keys())]).min().item()
         if show_progress:
+            top_score = torch.tensor([c.mean() for c in list(best_candidates.keys())]).min().item()
             pbar.set_description_str(f"{task_id}: {top_score:.2f}")
     return None
 
@@ -131,8 +117,10 @@ def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbo
 #%%
 # testing
 
-per_task_iterations = 3
+show_progress = True
+per_task_iterations = 200
 length_limit = 4 # Maximal length of a program
+pop_size = 30
 
 num_correct = 0
 num_total = 0
@@ -146,7 +134,7 @@ for task_id in pbar:
     with open(task_file, 'r') as f:
         task = json.load(f)
 
-    program = build_model(task['train'], candidates_nodes, max_iterations=per_task_iterations, length_limit=length_limit, verbose=False, task_id=task_id)
+    program = build_model(task['train'], candidates_nodes, max_iterations=per_task_iterations, length_limit=length_limit, verbose=False, task_id=task_id,nb_candidates=pop_size, show_progress=show_progress)
     pbar.set_description_str(f"{num_correct/num_total}")
     if program is None:
         # print("No program was found")

@@ -85,13 +85,18 @@ def is_solution(program, task, verbose=True):
         o = torch.tensor(sample['output']).to(device)
 
         # Evaluate the program on the input
-        images = evaluate(program, i)
+        images = program.evaluate(i)
         if len(images) < 1:
             return False
         
         # The solution should be in the 3 first outputs
         images = images[:3]
-        
+
+        try:
+            for img in range(len(images)):
+                images[img] =images[img][0]
+        except:
+            return False
         # Check if the output is in the 3 images produced
         is_program_of_for_sample = any([are_two_images_equals(x, o) for x in images])
         if not is_program_of_for_sample:

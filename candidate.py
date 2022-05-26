@@ -2,9 +2,25 @@ import copy
 import random
 import numpy as np
 import torch
+from fitness import fitness_functions
+from operations import all_operations
 
-from operations import all_operations, union
 from util import plot_one, show_image_list
+
+prob_add_connection = 0.5
+prob_add_node = 0.5
+prob_remove_node = 0.3
+prob_remove_connection = 0.3
+prob_mutate_weight = 0.3
+prob_mutate_activation = 0.3
+
+initial_connection_prob = 1.0
+initial_hidden = 0
+
+max_weight = 1.0
+weight_mutation = .2
+
+device = 'cpu'
 
 class Node():
     def __init__(self, activation):
@@ -24,61 +40,264 @@ class Connection():
     def __iter__(self):
         return iter([self.from_node, self.to_node])
 
+class Candidate():
+    def __init__(self, num_inputs=1, num_outputs=1) -> None:
+        self.input_nodes = []
+        self.output_nodes = []
+        self.connections = []
+        self.hidden_nodes = []
+        
+        for _ in range(num_inputs):
+            self.input_nodes.append(Node(random_activation()))
+        for _ in range(num_outputs):
+            self.output_nodes.append(Node(random_activation()))
+        for _ in range(initial_hidden):
+            self.hidden_nodes.append(Node(random_activation()))
+
+        for inp in self.input_nodes:
+            for h in self.hidden_nodes:
+                if random.random() < initial_connection_prob:
+                    self.connections.append(Connection(inp, h, random_weight()))
+        if initial_hidden>0:
+            for h in self.hidden_nodes:
+                for outp in self.output_nodes:
+                    if random.random() < initial_connection_prob:
+                        self.connections.append(Connection(h, outp, random_weight()))
+        else:
+            for inp in self.input_nodes:
+                for outp in self.output_nodes:
+                    if random.random() < initial_connection_prob:
+                        self.connections.append(Connection(inp, outp, random_weight()))
+    def layers(self):
+        return feed_forward_layers(self.input_nodes, self.output_nodes, self.connections)
+
+    def add_node(self):
+        if len(self.hidden_nodes) == 0 or len(self.connections) == 0:
+            self.hidden_nodes.append(Node(random_activation()))
+            return
+        # pick random connection to break
+        cx = random.choice(self.connections)
+        # create new node
+        new_node = Node(random_activation())
+        self.hidden_nodes.append(new_node)
+        # create new connections
+        new_connection_a = Connection(cx.from_node, new_node, 1.0)
+        new_connection_b = Connection(new_node, cx.to_node, random_weight())
+        # replace old connection with new connections
+        self.connections.append(new_connection_a)
+        self.connections.append(new_connection_b)
+        self.connections.remove(cx)
+
+    def remove_node(self):
+        if len(self.hidden_nodes) == 0:
+            return
+        random_node = random.choice(self.hidden_nodes)
+        for cx in self.connections[::-1]:
+            if cx.from_node == random_node or cx.to_node == random_node:
+                self.connections.remove(cx)
+
+    def add_connection(self):
+        ffl = self.layers()
+        for i, l in enumerate(ffl[::-1]):
+            if len(l)==0:
+                ffl.remove(l)
+            ffl[i] = list(set(l)) 
+            
+        start_layer = random.randint(0, len(ffl)-1)
+        start_layer = min(start_layer, len(ffl)-2)
+        start_node = random.randint(0, len(ffl[start_layer])-1)
+        end_layer = random.randint(start_layer+1, len(ffl)-1)
+        end_node = random.randint(0, len(ffl[end_layer])-1)
+        self.connections.append(Connection(list(ffl[start_layer])[start_node], ffl[end_layer][end_node], random_weight()))
+
+    def remove_connection(self):
+        if len(self.connections) == 0:
+            return
+        cx = random.choice(self.connections)
+        self.connections.remove(cx)
+
+    def mutate_activations(self):
+        for node in self.hidden_nodes + self.output_nodes + self.input_nodes:
+            if random.random() < prob_mutate_activation:
+                node.activation = random_activation()
+        
+    def mutate_weights(self):
+        for cx in self.connections:
+            if random.random() < prob_mutate_weight:
+                cx.weight += random.gauss(0, weight_mutation)
+                if cx.weight < -max_weight:
+                    cx.weight = max_weight
+                if cx.weight > max_weight:
+                    cx.weight = max_weight
+
+    def mutate(self):
+        if random.random() < prob_add_node:
+            self.add_node()
+        if random.random() < prob_add_connection:
+            self.add_connection()
+        if random.random() < prob_remove_node:
+            self.remove_node()
+        if random.random() < prob_remove_connection:
+            self.remove_connection()
+        self.mutate_weights()
+        self.mutate_activations()
+
+    
+    def evaluate(self, input_sample):
+        """Evaluate the network to get data in parallel"""
+
+        layers = feed_forward_layers(self.input_nodes, self.output_nodes, self.connections) # get layers
+        for layer_index, layer in enumerate(layers):
+            # iterate over layers
+            for _, node in enumerate(layer):
+                # iterate over nodes in layer
+                # find incoming connections
+                incoming = list(filter(lambda x, n=node: x.to_node == n, self.connections))
+                # initialize the node's sum_inputs
+
+                # initialize the sum_inputs for this node
+                if layer_index == 0:
+                    node.current_output = [input_sample]
+                else:
+                    node.current_output = [] # reinitialize the node's current_output
+
+                for cx in incoming:
+                    from_layer_index = 0
+                    for l in layers:
+                        if cx.from_node in l:
+                            break
+                        from_layer_index += 1
+                    to_layer_index = 0
+                    for l in layers:
+                        if cx.to_node in l:
+                            break
+                        to_layer_index += 1
+                    if from_layer_index == to_layer_index:
+                        continue
+                    if from_layer_index > to_layer_index:
+                        continue
+                    inputs = cx.from_node.current_output
+                    # print(inputs)
+                    for i in range(len(inputs)):
+                        inputs[i] = inputs[i].type(torch.float32)
+                        inputs[i] *= float(cx.weight) 
+                        
+                        if i >= len(node.current_output):
+                            node.current_output.append(inputs[i])
+                        else:
+                            node.current_output[i], inputs[i] = pad_to_same(node.current_output[i], inputs[i])
+                            node.current_output[i] = torch.add(node.current_output[i], inputs[i])
+                        # print(i, len(node.current_output), len(inputs))
+                # node.current_output = [x for x in node.current_output]
+                # print(node.current_output)
+                node.current_output = node.activation(node.current_output)  # apply activation
+                node.current_output = [torch.nan_to_num(x) for x in node.current_output]
+
+        # collect outputs from the last layer
+        outputs = [o.current_output for o in self.output_nodes]
+        # outputs = torch.tensor([node.current_output for node in output_nodes])
+        return outputs
+
+    def evaluate_fitness(self, task):
+        score = torch.zeros((len(fitness_functions)))
+        for sample in task:
+            i = torch.tensor(sample['input']).to(device)
+            o = torch.tensor(sample['output']).to(device)
+            i = i.type(torch.FloatTensor)
+            o = o.type(torch.FloatTensor)
+
+            # For each fitness function
+            for index, fitness_function in enumerate(fitness_functions):
+                images = self.evaluate(copy.deepcopy(i))
+                if images == []: # Penalize no prediction!
+                    score[index] += 500
+                else: # Take only the score of the first output
+                    for img in range(len(images)):
+                        if not isinstance(images[img], torch.Tensor):
+                            if len(images[img])==2:
+                                images[img][0], images[img][1] = pad_to_same(images[img][0], images[img][1])
+                                images[img] = torch.stack(images[img])
+                            else:
+                                try:
+                                    images[img] = images[img][0]
+                                except:
+                                    images[img] = torch.tensor(images[img])
+                                    continue
+                    images = [img for img in images if img.shape[0] > 0 and img.shape[1] > 0]
+                    if len(images) == 0 or images == [] or len(images[0].shape)<2:
+                        score[index] += 500
+                        continue
+                    # remove dimensions of size 1
+                    images = [img.squeeze() for img in images]
+
+                    if len(images[0].shape) == 3:
+                        images[0] = images[0][0]
+                    images[0] = torch.nan_to_num(images[0], 0)
+                    images[0] = images[0].type(torch.float32)
+                    images[0] /= torch.max(images[0])
+                    images[0] *=9.0
+                    torch.round(images[0])
+                    score[index] = fitness_function(images[0], o)
+        return score
+    
 def random_weight():
-    scale = 2.0
-    return random.uniform(-scale,scale)
-
-def evaluate(input_sample, input_nodes, output_nodes, connections):
-    """Evaluate the network to get data in parallel"""
-
-    layers = feed_forward_layers(input_nodes, output_nodes, connections) # get layers
-    for layer in layers:
-        # iterate over layers
-        for _, node in enumerate(layer):
-            # iterate over nodes in layer
-            # find incoming connections
-            incoming = list(filter(lambda x, n=node: x.to_node == n, connections))
-            # initialize the node's sum_inputs
-
-            # initialize the sum_inputs for this node
-            if layer == layers[0]:
-                node.current_output = [input_sample]
-            else:
-                node.current_output = [] # reinitialize the node's current_output
-
-            for cx in incoming:
-                inputs = cx.from_node.current_output
-                for i in range(len(inputs)):
-                    inputs[i].type(torch.float32)
-                    inputs[i] *= float(cx.weight) 
-                    if i >= len(node.current_output):
-                        node.current_output.append(inputs[i])
-                    else:
-                        # node.current_output[i] += inputs[i]
-                        # node.current_output[i] = torch.div(node.current_output[i], inputs[i])
-                        node.current_output[i] = torch.add(node.current_output[i], inputs[i])
-                        # print("node.current_output[i]", node.current_output[i])
-
-
-            # node.current_output = [x for x in node.current_output]
-            # print(node.current_output)
-            node.current_output = node.activation(node.current_output)  # apply activation
-
-
-    # collect outputs from the last layer
-    outputs = [o.current_output for o in output_nodes]
-    # outputs = torch.tensor([node.current_output for node in output_nodes])
-    return outputs
-
-
+    return random.uniform(-max_weight,max_weight)
+def random_activation():
+    return random.choice(all_operations)
 def get_candidate_nodes(s, connections):
     """Find candidate nodes c for the next layer.  These nodes should connect
     a node in s to a node not in s."""
     return set(b for (a, b) in connections if a in s and b not in s)
 
+def pad_to_same(x, y):
+    # pad the output to match the input
+    if x.shape[-2] < y.shape[-2]:
+        x = torch.nn.functional.pad(x, (0,0, y.shape[-2] - x.shape[-2], 0), value=-1)
+    elif x.shape[-2] > y.shape[-2]:
+        y = torch.nn.functional.pad(y, (0,0, x.shape[-2] - y.shape[-2], 0), value=-1)
+    if x.shape[-1] < y.shape[-1]:
+        x = torch.nn.functional.pad(x, (0, y.shape[-1] - x.shape[-1], 0, 0), value=-1)
+    elif x.shape[-1] > y.shape[-1]:
+        y = torch.nn.functional.pad(y, (0, x.shape[-1] - y.shape[-1], 0, 0), value=-1)
+    return x, y
+
+
+if __name__ == "__main__":
+    from util import plot_task
+    import os
+    import json
+
+    candidate = Candidate()
+
+    TRAIN_PATH = './ARC/data/training'
+    training_tasks = sorted(os.listdir(TRAIN_PATH))
+    task = training_tasks[1]
+    task_path = os.path.join(TRAIN_PATH, task)
+    with open(task_path, 'r') as f:
+        task_ = json.load(f)
+    task = task_['train']
+    score = candidate.evaluate_fitness(task)
+    # plot_task(task_)
+    print(tuple(score))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Functions below are modified from other packages
-# This is necessary because AWS Lambda has strict space limits,
-# and we only need a few methods, not the entire packages.
 
 ###############################################################################################
 # Functions below are from the NEAT-Python package https://github.com/CodeReclaimers/neat-python/
@@ -166,7 +385,6 @@ def feed_forward_layers(inputs, outputs, connections):
     layers = []
     s = set(inputs)
     while 1:
-
         c = get_candidate_nodes(s, connections)
         # Keep only the used nodes whose entire input set is contained in s.
         t = set()
@@ -180,82 +398,7 @@ def feed_forward_layers(inputs, outputs, connections):
         layers.append(t)
         s = s.union(t)
 
-    layers.insert(0, set(inputs)) # add input nodes as first layer
+    layers.insert(0, list(set(inputs))) # add input nodes as first layer
 
-    return layers
+    return list(layers)
 
-
-
-if __name__ == "__main__":
-    from util import plot_task
-    import os
-    import json
-    from fitness import fitness_functions
-    device = 'cpu'
-    score = torch.zeros((len(fitness_functions)))
-
-    # test the network
-    # create the network
-    input_nodes = [Node(random.choice(all_operations)) for i in range(1)]
-    hidden_nodes_0 = [Node(random.choice(all_operations)) for i in range(2)]
-    hidden_nodes_1 = [Node(random.choice(all_operations)) for i in range(2)]
-    output_nodes = [Node(random.choice(all_operations)) for i in range(1)]
-    print("input",[n.activation.__name__ for n in input_nodes])
-    print("hidden0",[n.activation.__name__ for n in hidden_nodes_0])
-    print("hidden1",[n.activation.__name__ for n in hidden_nodes_1])
-    print("output",[n.activation.__name__ for n in output_nodes])
-    
-    connections = [
-    ]
-
-    for inp in input_nodes:
-        for h0 in hidden_nodes_0:
-            connections.append(Connection(inp, h0, 1.0))
-    for h0 in hidden_nodes_0:
-        for h1 in hidden_nodes_1:
-            connections.append(Connection(h0, h1, 1.0))
-    for h1 in hidden_nodes_1:
-        for outp in output_nodes:
-            connections.append(Connection(h1, outp, 1.0))
-    print(np.mean([c.weight for c in connections]))
-
-    TRAIN_PATH = './ARC/data/training'
-    training_tasks = sorted(os.listdir(TRAIN_PATH))
-    task = training_tasks[1]
-    task_path = os.path.join(TRAIN_PATH, task)
-    with open(task_path, 'r') as f:
-        task_ = json.load(f)
-    task = task_['train']
-     # For each sample
-    for sample in task:
-        i = torch.tensor(sample['input']).to(device)
-        o = torch.tensor(sample['output']).to(device)
-        i = i.type(torch.FloatTensor)
-        o = o.type(torch.FloatTensor)
-        # For each fitness function
-        for index, fitness_function in enumerate(fitness_functions):
-            images = evaluate(copy.deepcopy(i), input_nodes, output_nodes, connections)
-            for img in range(len(images)):
-                if not isinstance(images[img], torch.Tensor):
-                    images[img] = torch.stack(images[img])
-            images = [img for img in images if img.shape[0] > 0 and img.shape[1] > 0]
-
-            # remove dimensions of size 1
-            while images[0].shape[0] == 1:
-                images[0] = images[0][0]
-
-            if len(images[0].shape) == 3:
-                images[0] = images[0][0]
-
-
-            images[0] /= torch.max(images[0])
-            images[0] *=9.0
-            torch.round(images[0])
-
-            if images == []: # Penalize no prediction!
-                score[index] += 500
-            else: # Take only the score of the first output
-                score[index] = fitness_function(images[0], o)
-        show_image_list([i, images[0], o])
-    plot_task(task_)
-    print(tuple(score))
