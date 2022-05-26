@@ -50,13 +50,14 @@ def evaluate(input_sample, input_nodes, output_nodes, connections):
                 inputs = cx.from_node.current_output
                 for i in range(len(inputs)):
                     inputs[i].type(torch.float32)
-                    inputs[i] *= cx.weight 
+                    inputs[i] *= float(cx.weight) 
                     if i >= len(node.current_output):
                         node.current_output.append(inputs[i])
                     else:
                         # node.current_output[i] += inputs[i]
+                        # node.current_output[i] = torch.div(node.current_output[i], inputs[i])
                         node.current_output[i] = torch.add(node.current_output[i], inputs[i])
-
+                        # print("node.current_output[i]", node.current_output[i])
 
 
             # node.current_output = [x for x in node.current_output]
@@ -209,13 +210,13 @@ if __name__ == "__main__":
 
     for inp in input_nodes:
         for h0 in hidden_nodes_0:
-            connections.append(Connection(inp, h0, 1))
+            connections.append(Connection(inp, h0, 1.0))
     for h0 in hidden_nodes_0:
         for h1 in hidden_nodes_1:
-            connections.append(Connection(h0, h1, 1))
+            connections.append(Connection(h0, h1, 1.0))
     for h1 in hidden_nodes_1:
         for outp in output_nodes:
-            connections.append(Connection(h1, outp, 1))
+            connections.append(Connection(h1, outp, 1.0))
     print(np.mean([c.weight for c in connections]))
 
     TRAIN_PATH = './ARC/data/training'
@@ -234,7 +235,6 @@ if __name__ == "__main__":
         # For each fitness function
         for index, fitness_function in enumerate(fitness_functions):
             images = evaluate(copy.deepcopy(i), input_nodes, output_nodes, connections)
-            
             for img in range(len(images)):
                 if not isinstance(images[img], torch.Tensor):
                     images[img] = torch.stack(images[img])
@@ -246,6 +246,11 @@ if __name__ == "__main__":
 
             if len(images[0].shape) == 3:
                 images[0] = images[0][0]
+
+
+            images[0] /= torch.max(images[0])
+            images[0] *=9.0
+            torch.round(images[0])
 
             if images == []: # Penalize no prediction!
                 score[index] += 500
