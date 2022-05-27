@@ -8,6 +8,7 @@ import os
 # !ls
 # using code from: https://www.kaggle.com/code/zenol42/dsl-and-genetic-algorithm-applied-to-arc/notebook
 #%%
+
 import json
 import random
 import torch
@@ -46,7 +47,7 @@ def build_candidates(best_candidates=[], length_limit=4, nb_candidates=100):
     
     # Until we have enougth new candidates
     while(len(new_candidates) < nb_candidates):
-        # Add 10 new programs
+        # Add new programs
         for i in range(5):
             new_candidates += [Candidate()]
         
@@ -91,7 +92,7 @@ def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbo
                     del best_candidates[best_score]
                     best_candidates[score] = candidate
                     is_incomparable = False # The candidates are comparable
-                if product_less(best_score, score) or (best_score == score).all():
+                if product_less(best_score, score) or (best_score == score):
                     is_incomparable = False # The candidates are comparable
             if is_incomparable: # The two candidates are incomparable
                 best_candidates[score] = candidate
@@ -108,46 +109,76 @@ def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbo
             print("Random candidate score:", random_candidate_score, "average:", ((random_candidate_score[0] + random_candidate_score[1] + random_candidate_score[2]) / 3).item())
             print("Random candidate implementation:", program_desc(best_candidates[random_candidate_score]))
         
+        scores = [np.mean(c) for c in list(best_candidates.keys())]
+        top_score = torch.tensor(scores).min().item()
+        top_index = list(scores).index(top_score)
         if show_progress:
-            top_score = torch.tensor([c.mean() for c in list(best_candidates.keys())]).min().item()
             pbar.set_description_str(f"{task_id}: {top_score:.2f}")
+            
+    if False:
+        best = None
+        best_score = (np.inf,)*len(fitness_functions)
+        for i, (score, candidate) in enumerate(best_candidates.items()):
+            if product_less(score, best_score):
+                best = candidate
+                best_score = score
+        inp = torch.tensor(task[-1]['input']).to(device)
+        out = torch.tensor(task[-1]['output']).to(device)
+        inp = inp.type(torch.FloatTensor)
+        out = out.type(torch.FloatTensor)
+        results = best.evaluate(inp)
+        visualize_network(best)
+        show_image_list([inp, out, results[0][0]])
+        print(f"{task_id}: {top_score:.2f}")
     return None
 
 
 #%%
 # testing
+%load_ext autoreload
+%autoreload 2
 
+print([n.__name__ for n in all_operations])
 show_progress = True
 per_task_iterations = 200
 length_limit = 4 # Maximal length of a program
-pop_size = 30
+pop_size = 100
 
 num_correct = 0
 num_total = 0
 candidates_nodes = all_operations
-
 pbar = trange(len(all_tasks))
 
+random_indices = random.sample(range(len(all_tasks)), len(all_tasks))
+
 for task_id in pbar:
-    num_total+=1
-    task_file = str((TRAIN_PATH if task_id < len(training_tasks) else EVAL_PATH) + "/" + all_tasks[task_id])
-    with open(task_file, 'r') as f:
-        task = json.load(f)
+    try:
+        # indx = random_indices[task_id]
+        indx = task_id
+        num_total+=1
+        task_file = str((TRAIN_PATH if indx < len(training_tasks) else EVAL_PATH) + "/" + all_tasks[indx])
+        with open(task_file, 'r') as f:
+            task = json.load(f)
 
-    program = build_model(task['train'], candidates_nodes, max_iterations=per_task_iterations, length_limit=length_limit, verbose=False, task_id=task_id,nb_candidates=pop_size, show_progress=show_progress)
-    pbar.set_description_str(f"{num_correct/num_total}")
-    if program is None:
-        # print("No program was found")
-        continue # no answer in top 3
-    else:
-        num_correct+=1
+        program = build_model(task['train'], candidates_nodes, max_iterations=per_task_iterations, length_limit=length_limit, verbose=False, task_id=task_id,nb_candidates=pop_size, show_progress=show_progress)
+        pbar.set_description_str(f"{num_correct/num_total}")
+        
+        if program is None:
+            # print("No program was found")
+            continue # no answer in top 3
+        else:
+            num_correct+=1
 
-        # print("Found program:", program_desc(program))
-        # print("Fitness:", evaluate_fitness(program, task['train']))
-        # print("Is solution:", is_solution(program, task['train']))
-        # results = evaluate(program=program, input_image=task['test'][0]['input'])
-        # show_image_list([task['test'][0]['input'], results[1]])
-
+            # print("Found program:", program_desc(program))
+            # print("Fitness:", evaluate_fitness(program, task['train']))
+            # print("Is solution:", is_solution(program, task['train']))
+            # results = evaluate(program=program, input_image=task['test'][0]['input'])
+            # show_image_list([task['test'][0]['input'], results[1]])
+    except KeyboardInterrupt:
+        break
+    # except Exception as e:
+        # print(type(e), e)
+        # continue
 
 #%%
 import time

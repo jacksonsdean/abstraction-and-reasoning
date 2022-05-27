@@ -64,9 +64,13 @@ fitness_functions = [colors_fitness, activated_pixels_fitness, height_fitness, w
 
 def product_less(a, b):
     """ Return True if the two tuples a and b respect a<b for the partial order. """
+    for i in range(len(a)):
+        if a[i] > b[i]:
+            return False
+    return True
     # a = torch.tensor(a).to(device)
     # b = torch.tensor(b).to(device)
-    return (a < b).all()
+    # return (a < b).all()
 
 def evaluate_fitness(program, task):
     """ Take a program and a task, and return its fitness score as a tuple. """
