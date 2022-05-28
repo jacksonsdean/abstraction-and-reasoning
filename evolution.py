@@ -109,11 +109,18 @@ def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbo
             print("Random candidate score:", random_candidate_score, "average:", ((random_candidate_score[0] + random_candidate_score[1] + random_candidate_score[2]) / 3).item())
             print("Random candidate implementation:", program_desc(best_candidates[random_candidate_score]))
         
-        scores = [np.mean(c) for c in list(best_candidates.keys())]
+        scores = [np.max(c) for c in list(best_candidates.keys())]
         top_score = torch.tensor(scores).min().item()
         top_index = list(scores).index(top_score)
+
+        # best_candidates sorted by score
+        best_candidates_items = list(best_candidates.items())
+        best_candidates_items.sort(key=lambda x: x[0])
+        best_candidates_score = [c[0] for c in best_candidates_items][0]
+
         if show_progress:
             pbar.set_description_str(f"{task_id}: {top_score:.2f}")
+            pbar.set_postfix_str(f"{[f'{s:.2f}|' for s in best_candidates_score]}")
             
     if False:
         best = None
@@ -140,9 +147,11 @@ def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbo
 
 print([n.__name__ for n in all_operations])
 show_progress = True
+do_shuffle = False
+
 per_task_iterations = 200
 length_limit = 4 # Maximal length of a program
-pop_size = 100
+pop_size = 60
 
 num_correct = 0
 num_total = 0
@@ -153,14 +162,14 @@ random_indices = random.sample(range(len(all_tasks)), len(all_tasks))
 
 for task_id in pbar:
     try:
-        # indx = random_indices[task_id]
-        indx = task_id
+        indx = random_indices[task_id] if do_shuffle else task_id
+        
         num_total+=1
         task_file = str((TRAIN_PATH if indx < len(training_tasks) else EVAL_PATH) + "/" + all_tasks[indx])
         with open(task_file, 'r') as f:
             task = json.load(f)
 
-        program = build_model(task['train'], candidates_nodes, max_iterations=per_task_iterations, length_limit=length_limit, verbose=False, task_id=task_id,nb_candidates=pop_size, show_progress=show_progress)
+        program = build_model(task['train'], candidates_nodes, max_iterations=per_task_iterations, length_limit=length_limit, verbose=False, task_id=indx,nb_candidates=pop_size, show_progress=show_progress)
         pbar.set_description_str(f"{num_correct/num_total}")
         
         if program is None:
@@ -168,17 +177,13 @@ for task_id in pbar:
             continue # no answer in top 3
         else:
             num_correct+=1
-
-            # print("Found program:", program_desc(program))
-            # print("Fitness:", evaluate_fitness(program, task['train']))
-            # print("Is solution:", is_solution(program, task['train']))
-            # results = evaluate(program=program, input_image=task['test'][0]['input'])
-            # show_image_list([task['test'][0]['input'], results[1]])
+            print(f"found solution for task {indx}")
+            visualize_network(program)
     except KeyboardInterrupt:
         break
-    # except Exception as e:
-        # print(type(e), e)
-        # continue
+    except Exception as e:
+        print(type(e), e)
+        continue
 
 #%%
 import time

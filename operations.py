@@ -23,6 +23,8 @@ def identity(x):
 
 def group_by_color_unlifted(pixmap):
     """ Split an image into a collection of images with unique color """
+    if pixmap.numel() ==0:
+        return []
     # Count the number of colors
     nb_colors = int(pixmap.max()) + 1
     # Create a pixmap for each color
@@ -238,13 +240,19 @@ def stack_row(x):
 
 def pad_all_to_max(xs):
     """ Pad all images in the list to the maximum size. """
-    max_shape = tuple(max(x.shape for x in xs))
-    return [torch.nn.functional.pad(x, (0, max_shape[1] - x.shape[1], 0, max_shape[0] - x.shape[0])) for x in xs]
+    shapes = [x.shape for x in xs if len(x.shape) > 1]
+    if len(shapes) == 0:
+        return xs
+    max_shape = tuple(max(shapes))
+    return [torch.nn.functional.pad(x, (0, max_shape[1] - x.shape[1], 0, max_shape[0] - x.shape[0])) for x in xs if len(x.shape) > 1]
 
 def crop_all_to_min(xs):
     """ Crop all images in the list to the minimum size. """
-    min_shape = tuple(min(x.shape for x in xs))
-    return [x[:min_shape[0], :min_shape[1]] for x in xs]
+    shapes = [x.shape for x in xs if len(x.shape) > 1]
+    if len(shapes) == 0:
+        return xs
+    min_shape = tuple(min(shapes))
+    return [x[:min_shape[0], :min_shape[1]] for x in xs if len(x.shape) > 1]
 
 def elementwise_sum(xs):
     """ Sum all images in the list."""

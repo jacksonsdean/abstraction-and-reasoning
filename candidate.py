@@ -20,10 +20,14 @@ prob_reenable_connection = .025
 initial_connection_prob =1.0
 initial_hidden = 0
 
+
+use_weights = False
 max_weight = 9.0
 weight_mutation = 9.0
 
 device = 'cpu'
+
+
 
 class Node():
     def __init__(self, activation):
@@ -155,6 +159,8 @@ class Candidate():
                 node.activation = random_activation()
 
     def mutate_weights(self):
+        if not use_weights:
+            return
         for cx in self.connections:
             if random.random() < prob_mutate_weight:
                 cx.weight += random.gauss(0, weight_mutation)
@@ -175,9 +181,14 @@ class Candidate():
         self.mutate_weights()
         self.mutate_activations()
 
+    def reset_nodes(self):
+        """Reset all nodes to their initial state."""
+        for node in self.hidden_nodes + self.output_nodes + self.input_nodes:
+            node.current_output = []
+
     def evaluate(self, input_sample):
         """Evaluate the network to get data in parallel"""
-
+        self.reset_nodes()
         layers = self.layers()
         for layer_index, layer in enumerate(layers):
             # iterate over layers
@@ -205,33 +216,32 @@ class Candidate():
                     assert isinstance(inputs, list)
 
                     for i in range(len(inputs)):
-                        inputs[i] = inputs[i].type(torch.float32)
-                        inputs[i] = torch.mul(inputs[i], cx.weight)
+                        if use_weights:
+                            inputs[i] = torch.mul(inputs[i].type(torch.float32), cx.weight)
 
                         if i >= len(node.current_output):
                             node.current_output.append(inputs[i])
                         else:
                             node.current_output.append(inputs[i])
-                            # node.current_output[i], inputs[i] = pad_to_same(node.current_output[i], inputs[i])
-                            # node.current_output[i] = torch.add(node.current_output[i], inputs[i])
 
-                        # print(i, len(node.current_output), len(inputs))
 
                 # normalize      
                 for output_index, _ in enumerate(node.current_output):
                     node.current_output[output_index] = torch.nan_to_num(node.current_output[output_index], 0)
                     if node.current_output[output_index].numel() == 0:
                         continue
-                    node.current_output[output_index] = node.current_output[output_index].type(torch.float32)
-                    max_value = torch.max(node.current_output[output_index])
-                    min_value = torch.min(node.current_output[output_index])
-                    node.current_output[output_index] = (node.current_output[output_index] - min_value) / (max_value - min_value)
-                    node.current_output[output_index] *= 9.0
-                    node.current_output[output_index] = torch.round(node.current_output[output_index])
+                    if use_weights:
+                        node.current_output[output_index] = node.current_output[output_index].type(torch.float32)
+                        max_value = torch.max(node.current_output[output_index])
+                        min_value = torch.min(node.current_output[output_index])
+                        node.current_output[output_index] = (node.current_output[output_index] - min_value) / (max_value - min_value)
+                        node.current_output[output_index] *= 9.0
+                        node.current_output[output_index] = torch.round(node.current_output[output_index])
+                        
                     node.current_output[output_index] = node.current_output[output_index].type(torch.int8)
+                
                 node.current_output = [torch.nan_to_num(x, 0) for x in node.current_output]
                 node.current_output = node.activation(node.current_output)  # apply activation
-
                 
         # collect outputs from the last layer
         outputs = [o.current_output for o in self.output_nodes]
@@ -248,17 +258,20 @@ class Candidate():
 
             # For each fitness function
             for index, fitness_function in enumerate(fitness_functions):
-                images = self.evaluate(copy.deepcopy(i))
-                if images == []: # Penalize no prediction!
+                outputs = self.evaluate(copy.deepcopy(i))
+                if outputs == []: # Penalize no prediction!
                     score[index] += 500
                 else: # Take only the score of the first output
-                    images = images[0] # take first output neuron, list of pixmaps
+                    images = outputs[0] # take first output neuron, list of pixmaps
                     images = [img for img in images if img.shape[0] > 0 and img.shape[1] > 0]
                     if len(images) == 0:
                         score[index] += 500
                         continue
                     
-                    score[index] = fitness_function(images[0], o)
+                    guesses = images
+                    guesses = guesses[:3] # only take the first 3 guesses
+                    score[index] = min([fitness_function(img, o) for img in guesses])
+                    
         return tuple(score)
 
 def random_weight():
@@ -285,22 +298,43 @@ if __name__ == "__main__":
     import os
     import json
     from tqdm.notebook import trange
+    from operations import *
     TRAIN_PATH = './ARC/data/training'
     training_tasks = sorted(os.listdir(TRAIN_PATH))
+    
+    task = training_tasks[30]
+    task_path = os.path.join(TRAIN_PATH, task)
+    with open(task_path, 'r') as f:
+        task_ = json.load(f)
+    task = task_    
+    plot_task(task)
+    task = task_['train']
+    task = task[-1]
 
-    # test_candidate = Candidate()
-    # visualize_network(test_candidate, visualize_disabled=True)
-    # test_candidate.mutate()
-    # test_candidate.mutate()
-    # test_candidate.mutate()
-    # visualize_network(test_candidate, visualize_disabled=True)
-    # raise Exception("This is a test")
+    test_candidate = Candidate()
+    test_candidate.input_nodes[0].activation = identity
+    test_candidate.output_nodes[0].activation = crop_to_content
+    visualize_network(test_candidate, visualize_disabled=True)
+    i = torch.tensor(task['input']).to(device)
+    o = torch.tensor(task['output']).to(device)
+    i = i.type(torch.FloatTensor).clone()
+    o = o.type(torch.FloatTensor).clone()
+
+
+    output = test_candidate.evaluate(i)
+    output = output[0]
+    show_image_list([i, o] + output)
+    sol = is_solution(test_candidate, task_['train'])
+    print(sol)
+    raise Exception("This is a test")
+
     
     
-    
+    # tasks = training_tasks[:5]
+    # random.shuffle(training_tasks)
+    tasks = [30]
     # hillclimber
-    random.shuffle(training_tasks)
-    for task_id in trange(len(training_tasks[:5])):
+    for task_id in tasks:
         task = training_tasks[task_id]
         task_path = os.path.join(TRAIN_PATH, task)
         with open(task_path, 'r') as f:
@@ -314,13 +348,8 @@ if __name__ == "__main__":
             parent_score = parent.evaluate_fitness(task)
             child = copy.deepcopy(parent)
             child.mutate()
-            child.mutate()
-            child.mutate()
             child_score = child.evaluate_fitness(task)
-            # print("parent", parent_score, "\nchild", child_score)
-            # print()
             if product_less(child_score, parent_score):
-                # print("IMPROVE")
                 parent = child
                 parent_score = child_score
                 if is_solution(parent, task):
@@ -332,8 +361,9 @@ if __name__ == "__main__":
             # p.set_description(f"{parent_score} {child_score}")
             p.set_postfix_str(f"{np.mean(list(parent_score))}")
             scores.append(np.mean(list(parent_score)))
+            if i % 100 == 0:
+                visualize_network(parent)
         # plt.plot(scores)
-        # visualize_network(child)
         print(tuple(parent_score))
 
 

@@ -1,32 +1,26 @@
-from typing import List
 import torch
 
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 device = "cpu"
-
-def evaluate(program: List[callable], input_image: torch.tensor):
-    if not isinstance(input_image, torch.Tensor):
-        input_image = torch.tensor(input_image).to(device)
-    assert type(input_image) == torch.Tensor
-    
-    # Apply each function on the image
-    image_list = [input_image]
-    for fct in program:
-        # Apply the function
-        image_list = fct(image_list)
-        # Filter out empty images
-        image_list = [img for img in image_list if img.shape[0] > 0 and img.shape[1] > 0]
-        # Break if there is no data
-        if image_list == []:
-            return []
-    return image_list 
-     
 
 def tensor_intersect1d(a, b):
     # https://discuss.pytorch.org/t/intersection-between-to-vectors-tensors/50364/9
     a_cat_b, counts = torch.cat([a, b]).unique(return_counts=True)
     intersection = a_cat_b[torch.where(counts.gt(1))]
     return intersection
+
+def intersect_over_union_inv(predicted, expected_output):
+    """ Return the inverted IoU between the predicted and the expected output. """
+    if len(predicted.shape)<2:
+       return 100
+    shape = (max(predicted.shape[0], expected_output.shape[0]), max(predicted.shape[1], expected_output.shape[1]))
+    diff = torch.zeros(shape, dtype=torch.uint8, device=device)
+    diff[0:predicted.shape[0], 0:predicted.shape[1]] = (predicted > 0).type(torch.uint8) 
+    diff[0:expected_output.shape[0], 0:expected_output.shape[1]] -= (expected_output > 0).type(torch.uint8) 
+    
+    intersection = (diff != 0).sum()
+    union = (diff != -1).sum()
+    return 1.0-(intersection / union)
 
 def width_fitness(predicted, expected_output):
     """ How close the predicted image is to have the right width. Less is better."""
@@ -59,7 +53,13 @@ def colors_fitness(p, e):
 
     return (len(p_colors) - nb_inter) + (len(e_colors) - nb_inter)
 
-fitness_functions = [colors_fitness, activated_pixels_fitness, height_fitness, width_fitness]
+fitness_functions = [
+    colors_fitness,
+    activated_pixels_fitness,
+    height_fitness,
+    width_fitness,
+    intersect_over_union_inv
+    ]
 
 
 def product_less(a, b):
@@ -72,20 +72,3 @@ def product_less(a, b):
     # b = torch.tensor(b).to(device)
     # return (a < b).all()
 
-def evaluate_fitness(program, task):
-    """ Take a program and a task, and return its fitness score as a tuple. """
-    score = torch.zeros((len(fitness_functions)))
-    
-    # For each sample
-    for sample in task:
-        i = torch.tensor(sample['input']).to(device)
-        o = torch.tensor(sample['output']).to(device)
-        
-        # For each fitness function
-        for index, fitness_function in enumerate(fitness_functions):
-            images = evaluate(program, i)
-            if images == []: # Penalize no prediction!
-                score[index] += 500
-            else: # Take only the score of the first output
-                score[index] = fitness_function(images[0], o)
-    return tuple(score)
