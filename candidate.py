@@ -3,10 +3,10 @@ import random
 from matplotlib import pyplot as plt
 import numpy as np
 import torch
-from fitness import fitness_functions, product_less
+from fitness import activated_pixels_fitness, fitness_functions, pixel_distance_fitness, product_less
 from operations import all_operations
 
-from util import feed_forward_layers, get_layer_of_node, is_solution, plot_one, required_for_output, show_image_list
+from util import are_two_images_equals, feed_forward_layers, get_layer_of_node, is_solution, plot_one, required_for_output, show_image_list
 from visualize import visualize_network
 
 prob_add_connection = 0.05
@@ -195,7 +195,7 @@ class Candidate():
             for _, node in enumerate(layer):
                 # iterate over nodes in layer
                 # find incoming connections
-                incoming = list(filter(lambda x, n=node: x.to_node == n, self.connections))
+                incoming = list(filter(lambda x, n=node: x.to_node == n, self.enabled_connections()))
                 # initialize the sum_inputs for this node
                 if layer_index == 0:
                     node.current_output = [input_sample]
@@ -249,29 +249,31 @@ class Candidate():
         return outputs # a list of list of pixmaps
 
     def evaluate_fitness(self, task):
-        score = torch.zeros((len(fitness_functions)))
-        for sample in task:
+        score = torch.zeros((len(task), len(fitness_functions)))
+        for sample_index, sample in enumerate(task):
             i = torch.tensor(sample['input']).to(device)
             o = torch.tensor(sample['output']).to(device)
             i = i.type(torch.FloatTensor)
             o = o.type(torch.FloatTensor)
+            outputs = self.evaluate(copy.deepcopy(i))
 
             # For each fitness function
-            for index, fitness_function in enumerate(fitness_functions):
-                outputs = self.evaluate(copy.deepcopy(i))
+            for fit_index, fitness_function in enumerate(fitness_functions):
                 if outputs == []: # Penalize no prediction!
-                    score[index] += 500
+                    score[sample_index][fit_index] += 5000
                 else: # Take only the score of the first output
                     images = outputs[0] # take first output neuron, list of pixmaps
                     images = [img for img in images if img.shape[0] > 0 and img.shape[1] > 0]
+                    
                     if len(images) == 0:
-                        score[index] += 500
+                        score[sample_index][fit_index] += 5000
                         continue
                     
                     guesses = images
                     guesses = guesses[:3] # only take the first 3 guesses
-                    score[index] = min([fitness_function(img, o) for img in guesses])
-                    
+                    score[sample_index][fit_index] = min([fitness_function(img, o) for img in guesses])
+            
+        score = score.sum(dim=0)
         return tuple(score)
 
 def random_weight():
@@ -302,18 +304,32 @@ if __name__ == "__main__":
     TRAIN_PATH = './ARC/data/training'
     training_tasks = sorted(os.listdir(TRAIN_PATH))
     
-    task = training_tasks[30]
+
+    # easy tasks: 13, 30, 115
+
+    task = training_tasks[115]
     task_path = os.path.join(TRAIN_PATH, task)
     with open(task_path, 'r') as f:
         task_ = json.load(f)
     task = task_    
     plot_task(task)
     task = task_['train']
-    task = task[-1]
+    task = task[0]
 
     test_candidate = Candidate()
     test_candidate.input_nodes[0].activation = identity
-    test_candidate.output_nodes[0].activation = crop_to_content
+    test_candidate.hidden_nodes.append(Node(activation=flip_v))
+    # test_candidate.hidden_nodes.append(Node(activation=identity))
+    # test_candidate.hidden_nodes.append(Node(activation=stack_row))
+
+    test_candidate.output_nodes[0].activation = stack_row
+    test_candidate.connections = []
+    test_candidate.connections.append(Connection(test_candidate.input_nodes[0], test_candidate.hidden_nodes[0], weight=1))
+    test_candidate.connections.append(Connection(test_candidate.input_nodes[0], test_candidate.output_nodes[0], weight=1))
+    test_candidate.connections.append(Connection(test_candidate.hidden_nodes[0], test_candidate.output_nodes[0], weight=1))
+    # test_candidate.connections.append(Connection(test_candidate.hidden_nodes[1], test_candidate.hidden_nodes[2], weight=1))
+    # test_candidate.connections.append(Connection(test_candidate.hidden_nodes[2], test_candidate.output_nodes[0], weight=1))
+    
     visualize_network(test_candidate, visualize_disabled=True)
     i = torch.tensor(task['input']).to(device)
     o = torch.tensor(task['output']).to(device)
@@ -323,8 +339,8 @@ if __name__ == "__main__":
 
     output = test_candidate.evaluate(i)
     output = output[0]
-    show_image_list([i, o] + output)
-    sol = is_solution(test_candidate, task_['train'])
+    show_image_list([i, o] + output, ["Input", "Output"] + [f"Prediction {i}" for i in range(len(output))])
+    sol = is_solution(test_candidate, task_['test'])
     print(sol)
     raise Exception("This is a test")
 

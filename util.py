@@ -3,8 +3,6 @@ from matplotlib import colors
 import torch
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-from fitness import evaluate
-
 cmap = colors.ListedColormap(
         ['#000000', '#0074D9','#FF4136','#2ECC40','#FFDC00',
          '#AAAAAA', '#F012BE', '#FF851B', '#7FDBFF', '#870C25'])
@@ -51,19 +49,27 @@ def plot_task(task):
 
     
 # Display each output of the function
-def show_image_list(images):
+def show_image_list(images, titles=None):
     """ Show each image contained in a list. """
     p = plt.figure().subplots(1, len(images))
     if len(images) > 1:
         for i, image in enumerate(images):
             p[i].grid(True,which='both',color='lightgrey', linewidth=0.5)    
             p[i].set_yticks([x-0.5 for x in range(1+len(image))])
-            p[i].set_xticks([x-0.5 for x in range(1+len(image[0]))])   
+            p[i].set_xticks([x-0.5 for x in range(1+len(image[0]))]) 
+            p[i].set_yticklabels([])
+            p[i].set_xticklabels([])
+            if titles is not None:
+                p[i].set_title(titles[i])  
             p[i].imshow(image, cmap=cmap, norm=norm)
     elif len(images) == 1:
         p.grid(True,which='both',color='lightgrey', linewidth=0.5)    
         p.set_yticks([x-0.5 for x in range(1+len(images[0]))])
-        p.set_xticks([x-0.5 for x in range(1+len(images[0]))])   
+        p.set_xticks([x-0.5 for x in range(1+len(images[0]))])
+        p.set_yticklabels([])
+        p.set_xticklabels([])
+        if titles is not None:
+            p.set_title(titles[0])
         p.imshow(images[0], cmap=cmap, norm=norm)
     plt.show()
 
@@ -84,19 +90,28 @@ def is_solution(program, task, verbose=True):
     for sample in task: # For each pair input/output
         i = torch.tensor(sample['input']).to(device)
         o = torch.tensor(sample['output']).to(device)
+        
         # Evaluate the program on the input
-        images = program.evaluate(i)[0] # take first output node
+        output = program.evaluate(i)
+        
+        if len(output)<1:
+            return False
+
+        images = output[0] # take first output node
+
         if len(images) < 1:
             return False
         
         # The solution should be in the 3 first outputs
         images = images[:3]
-
+        # show_image_list(images)
         # Check if the output is in the 3 images produced
         is_program_of_for_sample = any([are_two_images_equals(x, o) for x in images])
         
-        # print(f'{is_program_of_for_sample}')
-        # show_image_list([i, o] + images)
+        if is_program_of_for_sample:
+            print(f'{is_program_of_for_sample}')
+            show_image_list([i, o] + images)
+        
 
         if not is_program_of_for_sample:
             return False

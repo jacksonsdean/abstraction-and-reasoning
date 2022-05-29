@@ -172,10 +172,14 @@ def visualize_network(individual, visualize_disabled=False, show_weights=False):
         node_layer = get_layer_of_node(node, layers)
         if node_layer is None:
             continue
+            
         if node_layer < len(x_pos):
             pos[k] = [x_pos[node_layer],
                       v[1]]
-
+            if node_layer ==1:
+                pos[k][1] =.1 
+            if node_layer ==0:
+                pos[k][1] =.05 
     # draw
     draw_nodes(graph, pos, node_labels, node_size)
 

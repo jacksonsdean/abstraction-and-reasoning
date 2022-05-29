@@ -8,6 +8,8 @@ import os
 # !ls
 # using code from: https://www.kaggle.com/code/zenol42/dsl-and-genetic-algorithm-applied-to-arc/notebook
 #%%
+%load_ext autoreload
+%autoreload 2
 
 import json
 import random
@@ -31,7 +33,8 @@ if not os.path.exists(TRAIN_PATH):
 training_tasks = sorted(os.listdir(TRAIN_PATH))
 eval_tasks = sorted(os.listdir(EVAL_PATH))
 
-all_tasks = training_tasks + eval_tasks
+# all_tasks = training_tasks + eval_tasks
+all_tasks = training_tasks
 
 
 
@@ -99,9 +102,26 @@ def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbo
 
         # For each best candidate, we look if we have an answer
         for program in best_candidates.values():
+            def get_key(val):
+                for key, value in best_candidates.items():
+                    if val == value:
+                        return key
+                return "key doesn't exist"
+            score = get_key(program)
+            score_is_0 =  score == (0,)*len(fitness_functions)
             if is_solution(program, task):
                 return program
-            
+            elif score_is_0:
+                print("Score was 0 but no solution")
+                # visualize_network(program)
+                i = torch.tensor(task[0]['input']).to(device)
+                o = torch.tensor(task[0]['output']).to(device)
+                i = i.type(torch.FloatTensor).clone()
+                o = o.type(torch.FloatTensor).clone()
+                output = program.evaluate(i)
+                output = output[0]
+                # show_image_list([i, o] + output, ["Input", "Output"] + [f"Prediction {i}" for i in range(len(output))])
+
         # Give some information by selecting a random candidate
         if verbose:
             print("Best candidates length:", len(best_candidates))
@@ -142,12 +162,10 @@ def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbo
 
 #%%
 # testing
-%load_ext autoreload
-%autoreload 2
 
 print([n.__name__ for n in all_operations])
 show_progress = True
-do_shuffle = False
+do_shuffle = True
 
 per_task_iterations = 200
 length_limit = 4 # Maximal length of a program
@@ -164,6 +182,8 @@ for task_id in pbar:
     try:
         indx = random_indices[task_id] if do_shuffle else task_id
         
+        # indx = 115
+
         num_total+=1
         task_file = str((TRAIN_PATH if indx < len(training_tasks) else EVAL_PATH) + "/" + all_tasks[indx])
         with open(task_file, 'r') as f:
@@ -178,12 +198,13 @@ for task_id in pbar:
         else:
             num_correct+=1
             print(f"found solution for task {indx}")
+            print("used nodes:", [n.activation.__name__ for n in program.input_nodes+program.hidden_nodes+program.output_nodes])
             visualize_network(program)
     except KeyboardInterrupt:
         break
-    except Exception as e:
-        print(type(e), e)
-        continue
+    # except Exception as e:
+    #     print(type(e), e)
+    #     continue
 
 #%%
 import time

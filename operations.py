@@ -223,6 +223,8 @@ def reverse(x):
 def stack_col(x):
     """ Stack a list of images into one tensor by column. """
     # Make sure all have the same shape
+    if len(x) == 0:
+        return []
     first_shape = tuple(x[0].shape)
     for pixmap in x[1:]:
         if first_shape != tuple(pixmap.shape):
@@ -232,6 +234,8 @@ def stack_col(x):
 def stack_row(x):
     """ Stack a list of images into one tensor by row. """
     # Make sure all have the same shape
+    if len(x) == 0:
+        return []
     first_shape = tuple(x[0].shape)
     for pixmap in x[1:]:
         if first_shape != tuple(pixmap.shape):
@@ -240,6 +244,8 @@ def stack_row(x):
 
 def pad_all_to_max(xs):
     """ Pad all images in the list to the maximum size. """
+    if len(xs) == 0:
+        return []
     shapes = [x.shape for x in xs if len(x.shape) > 1]
     if len(shapes) == 0:
         return xs
@@ -248,6 +254,8 @@ def pad_all_to_max(xs):
 
 def crop_all_to_min(xs):
     """ Crop all images in the list to the minimum size. """
+    if len(xs) == 0:
+        return []
     shapes = [x.shape for x in xs if len(x.shape) > 1]
     if len(shapes) == 0:
         return xs
@@ -256,82 +264,66 @@ def crop_all_to_min(xs):
 
 def elementwise_sum(xs):
     """ Sum all images in the list."""
+    if len(xs) == 0:
+        return []
     # Make sure all have the same shape
     first_shape = tuple(xs[0].shape)
     for pixmap in xs[1:]:
         if first_shape != tuple(pixmap.shape):
             return []
-    return [torch.add(torch.tensor(xs))]
+    return [torch.sum(torch.stack(xs), dim=0)]
 
 def elementwise_sub(xs):
     """ Subtract all images in the list."""
+    if len(xs) == 0:
+        return []
     # Make sure all have the same shape
     first_shape = tuple(xs[0].shape)
     for pixmap in xs[1:]:
         if first_shape != tuple(pixmap.shape):
             return []
-    return [torch.sub(torch.tensor(xs))]
+    return [torch.stack(xs)[0] - torch.sum(torch.stack(xs)[1:], dim=0)]
 
 def elementwise_max(xs):
     # Make sure all have the same shape
+    if len(xs) == 0:
+        return []
     first_shape = tuple(xs[0].shape)
     for pixmap in xs[1:]:
         if first_shape != tuple(pixmap.shape):
             return []
-    return [torch.max(torch.tensor(xs))]
+    return [torch.max(torch.stack(xs), dim=0)[0]]
 
 def elementwise_min(xs):
+    if len(xs) == 0:
+        return []
     # Make sure all have the same shape
     first_shape = tuple(xs[0].shape)
     for pixmap in xs[1:]:
         if first_shape != tuple(pixmap.shape):
             return []
-    return [torch.min(torch.tensor(xs))]
-
-def elementwise_mul(xs):
-    # Make sure all have the same shape
-    first_shape = tuple(xs[0].shape)
-    for pixmap in xs[1:]:
-        if first_shape != tuple(pixmap.shape):
-            return []
-    return [torch.mul(torch.tensor(xs))]
+    return [torch.min(torch.stack(xs), dim=0)[0]]
 
 def elementwise_div(xs):
+    if len(xs) == 0:
+        return []
     # Make sure all have the same shape
     first_shape = tuple(xs[0].shape)
     for pixmap in xs[1:]:
         if first_shape != tuple(pixmap.shape):
             return []
-    return [torch.div(torch.tensor(xs))]
+    return [torch.stack(xs)[0] / torch.sum(torch.stack(xs)[1:], dim=0)]
 
-def elementwise_gcd(xs):
+def elementwise_mul(xs):
+    if len(xs) == 0:
+        return []
     # Make sure all have the same shape
     first_shape = tuple(xs[0].shape)
     for pixmap in xs[1:]:
         if first_shape != tuple(pixmap.shape):
             return []
-    return [torch.gcd(torch.tensor(xs))]
+    return [torch.stack(xs)[0] * torch.sum(torch.stack(xs)[1:], dim=0)]
 
-def elementwise_lcm(xs):
-    # Make sure all have the same shape
-    first_shape = tuple(xs[0].shape)
-    for pixmap in xs[1:]:
-        if first_shape != tuple(pixmap.shape):
-            return []
-    return [torch.lcm(torch.tensor(xs))]
-
-def elementwise_lstsq(xs):
-    # Make sure all have the same shape
-    first_shape = tuple(xs[0].shape)
-    for pixmap in xs[1:]:
-        if first_shape != tuple(pixmap.shape):
-            return []
-    res = xs[0]
-    index = 0
-    while index < len(xs):
-        res = torch.lstsq(res, torch.tensor(xs[index+1]))[0]
-        index += 1
-    return [res]
 
 #%% 
 def lift(fct):
@@ -341,7 +333,7 @@ def lift(fct):
         return list(itertools.chain(*list_of_results))
     # Give a nice name to the lifted function
     import re
-    lifted_function.__name__ = re.sub('_unlifted$', '_lifted', fct.__name__)
+    lifted_function.__name__ = re.sub('_unlifted$', '', fct.__name__)
     return lifted_function
 
 crop_to_content = lift(crop_to_content_unlifted)
@@ -394,18 +386,14 @@ all_operations = [
     # unique,
     # tril, triu,# BROKE
     pad_all_to_max, crop_all_to_min,
-    # stack_h, 
-    stack_col, stack_row
+    stack_col, stack_row,
     # BROKE:
-    # elementwise_sum,
-    # elementwise_sub,
-    # elementwise_max,
-    # elementwise_min,
-    # elementwise_mul,
-    # elementwise_div,
-    # elementwise_gcd,
-    # elementwise_lcm,
-    # elementwise_lstsq,
+    elementwise_sum,
+    elementwise_sub,
+    elementwise_mul,
+    elementwise_div,
+    elementwise_max,
+    elementwise_min
 ]
 # operations with parameters:
 
