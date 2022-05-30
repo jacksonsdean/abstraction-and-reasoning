@@ -108,11 +108,6 @@ def is_solution(program, task, verbose=True):
         # Check if the output is in the 3 images produced
         is_program_of_for_sample = any([are_two_images_equals(x, o) for x in images])
         
-        if is_program_of_for_sample:
-            print(f'{is_program_of_for_sample}')
-            show_image_list([i, o] + images)
-        
-
         if not is_program_of_for_sample:
             return False
     

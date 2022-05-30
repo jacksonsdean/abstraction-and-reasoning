@@ -169,7 +169,7 @@ do_shuffle = True
 
 per_task_iterations = 200
 length_limit = 4 # Maximal length of a program
-pop_size = 60
+pop_size = 50
 
 num_correct = 0
 num_total = 0

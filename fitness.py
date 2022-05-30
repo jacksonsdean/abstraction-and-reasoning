@@ -40,7 +40,11 @@ def pixel_distance_fitness(p, e):
     """ How close the predicted image to have the right pixels. Less is better."""
     if len(p.shape)<2:
        return 100
+
     all = pad_all_to_max([p,e])
+    if len(all)<2:
+       return 100
+    
     p,e = all[0].type(torch.uint8), all[1].type(torch.uint8)
     diff = (p != e).type(torch.uint8)
     return diff.sum()

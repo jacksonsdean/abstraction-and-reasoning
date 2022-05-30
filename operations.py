@@ -3,7 +3,6 @@ import itertools
 import torch
 from typing import List
 
-
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 device = "cpu"
 
@@ -220,6 +219,21 @@ def reverse(x):
 
 
 # added by jackson -------------------------------------------------------------
+
+def remove_tail(x):
+    """ Remove the last element of a list. """
+    if len(x) > 1:
+        return x[:-1]
+    else:
+        return []
+
+def remove_init(x):
+    """ Remove the first element of a list. """
+    if len(x) > 1:
+        return x[1:]
+    else:
+        return []
+
 def stack_col(x):
     """ Stack a list of images into one tensor by column. """
     # Make sure all have the same shape
@@ -249,8 +263,9 @@ def pad_all_to_max(xs):
     shapes = [x.shape for x in xs if len(x.shape) > 1]
     if len(shapes) == 0:
         return xs
-    max_shape = tuple(max(shapes))
-    return [torch.nn.functional.pad(x, (0, max_shape[1] - x.shape[1], 0, max_shape[0] - x.shape[0])) for x in xs if len(x.shape) > 1]
+    max_x = max(shapes, key=lambda x: x[1])
+    max_y = max(shapes, key=lambda x: x[0])
+    return [torch.nn.functional.pad(x, (0, max_x[1] - x.shape[1], 0, max_y[0] - x.shape[0])) for x in xs]
 
 def crop_all_to_min(xs):
     """ Crop all images in the list to the minimum size. """
@@ -393,7 +408,10 @@ all_operations = [
     elementwise_mul,
     elementwise_div,
     elementwise_max,
-    elementwise_min
+    elementwise_min,
+
+    remove_tail,
+    remove_init,
 ]
 # operations with parameters:
 
