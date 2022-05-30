@@ -169,7 +169,7 @@ do_shuffle = True
 
 per_task_iterations = 200
 length_limit = 4 # Maximal length of a program
-pop_size = 50
+pop_size = 200
 
 num_correct = 0
 num_total = 0
@@ -177,6 +177,9 @@ candidates_nodes = all_operations
 pbar = trange(len(all_tasks))
 
 random_indices = random.sample(range(len(all_tasks)), len(all_tasks))
+
+
+used_nodes = {}
 
 for task_id in pbar:
     try:
@@ -197,15 +200,20 @@ for task_id in pbar:
             continue # no answer in top 3
         else:
             num_correct+=1
-            print(f"found solution for task {indx}")
-            print("used nodes:", [n.activation.__name__ for n in program.input_nodes+program.hidden_nodes+program.output_nodes])
-            visualize_network(program)
+            nodes = [n.activation.__name__ for n in program.input_nodes+program.hidden_nodes+program.output_nodes]
+            for node in nodes:
+                if node not in used_nodes:
+                    used_nodes[node] = 0
+                used_nodes[node]+=1
+            # visualize_network(program)
     except KeyboardInterrupt:
         break
-    # except Exception as e:
-    #     print(type(e), e)
-    #     continue
+    except Exception as e:
+        print(type(e), e)
+        continue
 
+plt.bar(list(used_nodes.keys()), list(used_nodes.values()))
+plt.show()
 #%%
 import time
 with open("./results.txt",'w') as f:
