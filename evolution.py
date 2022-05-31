@@ -167,9 +167,9 @@ print([n.__name__ for n in all_operations])
 show_progress = True
 do_shuffle = True
 
-per_task_iterations = 200
+per_task_iterations = 10
 length_limit = 4 # Maximal length of a program
-pop_size = 200
+pop_size = 2000
 
 num_correct = 0
 num_total = 0
