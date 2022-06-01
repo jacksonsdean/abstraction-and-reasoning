@@ -203,15 +203,31 @@ def intersect(x):
     x = torch.stack(x)            
     return [(torch.prod(x, axis=0))]
     
-def sortByColor(xs):
+def sort_by_color(xs):
     """ Sort pictures by increasing color id. """
     xs = [x for x in xs if len(x.reshape(-1)) > 0]
     return list(sorted(xs, key=lambda x: x.max()))
 
-def sortByWeight(xs):
+def sort_by_weight(xs):
     """ Sort images by how many non zero pixels are contained. """
     xs = [x for x in xs if len(x.reshape(-1)) > 0]
     return list(sorted(xs, key=lambda x: (x>0).sum()))
+
+def sort_by_symmetry_h(xs):
+    """ Sort images by how symmetrical they are."""
+    xs = [x for x in xs if len(x.reshape(-1)) > 0]
+    right_halves = [x[:, :x.shape[1]//2] for x in xs]
+    left_halves = [x[:, x.shape[1]//2:] for x in xs]
+    equal = [torch.equal(x, y) for x, y in zip(right_halves, left_halves)]
+    return list(sorted(xs, key=lambda x: sum(equal), reverse=True))
+
+def sort_by_symmetry_v(xs):
+    """ Sort images by how symmetrical they are."""
+    xs = [x for x in xs if len(x.reshape(-1)) > 0]
+    top_halves = [x[:x.shape[0]//2, :] for x in xs]
+    bottom_halves = [x[x.shape[0]//2:, :] for x in xs]
+    equal = [torch.equal(x, y) for x, y in zip(top_halves, bottom_halves)]
+    return list(sorted(xs, key=lambda x: sum(equal), reverse=True))
 
 def reverse(x):
     """ Reverse the order of a list of images. """
@@ -381,7 +397,8 @@ all_operations = [
     split_h,
     negative,
     tail, init, union, intersect,
-    sortByColor, sortByWeight, reverse,
+    sort_by_color, sort_by_weight, reverse,
+    sort_by_symmetry_h, sort_by_symmetry_v,
     
     # Jackson:
     color_shift,
@@ -416,7 +433,7 @@ all_operations = [
 # operations with parameters:
 
 # swap color:
-for in_out in itertools.permutations(range(10), 2):
-    func = partial(swap_color, color_a=in_out[0], color_b=in_out[1])
-    func.__name__ = f"swap{in_out[0]}->{in_out[1]}"
-    all_operations.append(func)        
+# for in_out in itertools.permutations(range(10), 2):
+#     func = partial(swap_color, color_a=in_out[0], color_b=in_out[1])
+#     func.__name__ = f"swap{in_out[0]}->{in_out[1]}"
+#     all_operations.append(func)        

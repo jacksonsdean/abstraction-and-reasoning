@@ -33,24 +33,34 @@ def random_activation():
     return random.choice(all_operations)
 
 class Node():
+    cur_id = 0
     def __init__(self, activation):
         self.activation = activation
         self.sum_inputs = []
         self.current_output = []
-        self.uuid = uuid.uuid4()
+        self.uuid = Node.cur_id
+        Node.cur_id += 1
 
 class Connection():
     innovation = 0
+    innovations = {}
     def __init__(self, from_node, to_node, weight, innovation=None):
         self.from_node = from_node
         self.to_node = to_node
         self.weight = weight
         self.enabled = True
-        if innovation is None:
-            self.innovation = Connection.innovation
+        # if innovation is None:
+        #     self.innovation = Connection.innovation
+        # else:
+        #     self.innovation = innovation
+        # Connection.innovation += 1
+       
+        if (from_node.uuid, to_node.uuid) in Connection.innovations:
+            self.innovation = Connection.innovations[(from_node.uuid, to_node.uuid)]
         else:
-            self.innovation = innovation
-        Connection.innovation += 1
+            self.innovation = Connection.innovation
+            Connection.innovations[(from_node.uuid, to_node.uuid)] = self.innovation
+            Connection.innovation += 1
 
     def __iter__(self):
         return iter([self.from_node, self.to_node])
@@ -84,17 +94,17 @@ class Candidate():
         for inp in self.input_nodes:
             for h in self.hidden_nodes:
                 if random.random() < initial_connection_prob:
-                    self.connections.append(Connection(inp, h, random_weight(), innovation=len(self.connections)))
+                    self.connections.append(Connection(inp, h, random_weight(), innovation=None))
         if initial_hidden>0:
             for i, h in enumerate(self.hidden_nodes):
                 for outp in self.output_nodes:
                     if random.random() < initial_connection_prob:
-                        self.connections.append(Connection(h, outp, random_weight(), innovation=len(self.connections)))
+                        self.connections.append(Connection(h, outp, random_weight(), innovation=None))
         else:
             for inp in self.input_nodes:
                 for outp in self.output_nodes:
                     if random.random() < initial_connection_prob:
-                        self.connections.append(Connection(inp, outp, random_weight(), innovation=len(self.connections)))
+                        self.connections.append(Connection(inp, outp, random_weight(), innovation=None))
    
     def layers(self):
         return feed_forward_layers(self.input_nodes, self.output_nodes, self.enabled_connections())
@@ -409,67 +419,77 @@ if __name__ == "__main__":
     task = task_['train']
     task = task[0]
 
-    # test_candidate = Candidate()
-    # # test_candidate.mutate()
-    # # test_candidate.mutate()
-    # test_candidate.add_node()
-    # test_candidate.add_node()
-    # test_candidate.add_node()
-    # test_candidate.add_connection()
+    test_candidate = Candidate()
+    test_candidate.add_node()
+    test_candidate.add_connection()
     
-    # test_candidate.evaluate_fitness(task_["train"])
 
-    # test_candidate_2 = copy.deepcopy(test_candidate)
+    test_candidate_2 = copy.deepcopy(test_candidate)
 
-    # test_candidate.add_node()
+    test_candidate.add_node()
+    test_candidate.add_node()
+    test_candidate.add_node()
 
-    # test_candidate_2.add_node()
-    # test_candidate_2.add_node()
-    # test_candidate_2.mutate_activations()
-    # test_candidate_2.mutate_activations()
-    # test_candidate_2.mutate_activations()
-    # test_candidate_2.mutate_activations()
-    # test_candidate_2.mutate_activations()
-    # test_candidate_2.mutate_activations()
-    # test_candidate.add_connection()
-    # test_candidate_2.add_node()
-    # test_candidate_2.add_node()
-    # test_candidate_2.evaluate_fitness(task_["train"])
+    test_candidate_2.mutate_activations()
+    test_candidate_2.mutate_activations()
+    test_candidate_2.mutate_activations()
+
+    test_candidate_2.add_node()
+    test_candidate_2.add_node()
+    test_candidate_2.add_node()
     
-    # more_fit_parent = test_candidate if product_less(test_candidate.fitness, test_candidate_2.fitness) else test_candidate_2
-    # other_parent = test_candidate if more_fit_parent == test_candidate_2 else test_candidate_2
+    for cx in test_candidate.connections:
+        cx.weight = .5
+    for cx in test_candidate_2.connections:
+        cx.weight = -.5
+
+    for _ in range(20):
+        p = copy.deepcopy(test_candidate)
+        test_candidate = test_candidate.crossover(test_candidate_2)
+        test_candidate_2 = test_candidate_2.crossover(p)
+        test_candidate_2.mutate()
+        test_candidate.mutate()
+
+        test_candidate.evaluate_fitness(task_["train"])
+        test_candidate_2.evaluate_fitness(task_["train"])
     
-    # visualize_network(more_fit_parent, visualize_disabled=True)
-    # visualize_network(other_parent, visualize_disabled=True)
-    
-    # print("1st parent" if more_fit_parent == test_candidate else "2nd parent")
-    
-    # print("parent1:", [cx.innovation for cx in more_fit_parent.connections])
-    # print("parent2:", [cx.innovation for cx in other_parent.connections])
-    
-    # matching_1, matching_2 = get_matching_connections(more_fit_parent.connections, other_parent.connections)
-    # print("matching1:", [cx.innovation for cx in matching_1])
-    # print("matching2:", [cx.innovation for cx in matching_2])
-    
-    # disjoint1 = get_disjoint_connections(more_fit_parent.connections, other_parent.connections)
-    # disjoint2 = get_disjoint_connections(other_parent.connections, more_fit_parent.connections)
-    # print("disjoint1:", [cx.innovation for cx in disjoint1])
-    # print("disjoint2:", [cx.innovation for cx in disjoint2])
+    more_fit_parent = test_candidate if product_less(test_candidate.fitness, test_candidate_2.fitness) else test_candidate_2
+    other_parent = test_candidate if more_fit_parent == test_candidate_2 else test_candidate_2
     
     
-    # excess1 = get_excess_connections(more_fit_parent.connections, other_parent.connections)
-    # excess2 = get_excess_connections(other_parent.connections, more_fit_parent.connections)
-    # print("excess1:", [cx.innovation for cx in excess1])
-    # print("excess2:", [cx.innovation for cx in excess2])
+    print("1st parent" if more_fit_parent == test_candidate else "2nd parent")
+    
+    print("parent1:", [cx.innovation for cx in more_fit_parent.connections])
+    print("parent2:", [cx.innovation for cx in other_parent.connections])
+    
+    matching_1, matching_2 = get_matching_connections(more_fit_parent.connections, other_parent.connections)
+    print("matching1:", [cx.innovation for cx in matching_1])
+    print("matching2:", [cx.innovation for cx in matching_2])
+    
+    disjoint1 = get_disjoint_connections(more_fit_parent.connections, other_parent.connections)
+    disjoint2 = get_disjoint_connections(other_parent.connections, more_fit_parent.connections)
+    print("disjoint1:", [cx.innovation for cx in disjoint1])
+    print("disjoint2:", [cx.innovation for cx in disjoint2])
     
     
-    # child = more_fit_parent.crossover(test_candidate_2)
-    # visualize_network(child, visualize_disabled=True)
-    # child.evaluate_fitness(task_["train"])
-    # print("num cxs:", len(child.connections), "num nodes:", len(child.nodes))
-    # print("more_fit:", more_fit_parent.fitness, "\ntest_2:", other_parent.fitness, "\nchild:", child.fitness)
+    excess1 = get_excess_connections(more_fit_parent.connections, other_parent.connections)
+    excess2 = get_excess_connections(other_parent.connections, more_fit_parent.connections)
+    print("excess1:", [cx.innovation for cx in excess1])
+    print("excess2:", [cx.innovation for cx in excess2])
     
-    # raise Exception("This is a test")
+    
+    child = more_fit_parent.crossover(test_candidate_2)
+    print("child:", [cx.innovation for cx in child.connections])
+  
+    visualize_network(more_fit_parent, visualize_disabled=True, arc=True, show_edge_labels=True)
+    visualize_network(other_parent, visualize_disabled=True, arc=True, show_edge_labels=True)
+    visualize_network(child, visualize_disabled=True, arc=True, show_edge_labels=True)
+  
+    child.evaluate_fitness(task_["train"])
+    print("num cxs:", len(child.connections), "num nodes:", len(child.nodes))
+    print("more_fit:", more_fit_parent.fitness, "\nother:", other_parent.fitness, "\nchild:", child.fitness)
+    
+    raise Exception("This is a test")
     
     
     

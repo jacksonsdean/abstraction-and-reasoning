@@ -198,7 +198,7 @@ for task_id in pbar:
     try:
         indx = random_indices[task_id] if do_shuffle else task_id
         
-        # indx = 115
+        indx = 115
 
         num_total+=1
         task_file = str((TRAIN_PATH if indx < len(training_tasks) else EVAL_PATH) + "/" + all_tasks[indx])
@@ -226,6 +226,11 @@ for task_id in pbar:
     #     continue
 
 plt.bar(list(used_nodes.keys()), list(used_nodes.values()))
+plt.show()
+#%%
+plt.figure(figsize=(10,10))
+plt.bar(list(used_nodes.keys()), list(used_nodes.values()))
+plt.gca().set_xticklabels(list(used_nodes.keys()), rotation='vertical')
 plt.show()
 #%%
 import time

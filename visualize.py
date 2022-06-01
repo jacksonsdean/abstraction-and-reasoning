@@ -1,5 +1,6 @@
 """Visualize a CPPN network, primarily for debugging"""
 import copy
+import random
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
@@ -47,12 +48,12 @@ def add_edges_to_graph(individual, visualize_disabled, graph, pos, required):
         if cx.from_node in required and cx.to_node in required:
             graph.add_edge(cx.from_node, cx.to_node,
                             weight=f"{cx.weight:.4f}", pos=pos, style=style)
-        edge_labels[(cx.from_node, cx.to_node)] = f"{cx.weight:.3f}"
+        edge_labels[(cx.from_node, cx.to_node)] = f"{cx.innovation}, {cx.weight:.3f}"
 
     return edge_labels
 
 
-def draw_edges(graph, pos, show_weights, node_size, edge_labels):
+def draw_edges(graph, pos, show_edge_labels, node_size, edge_labels, arc=False):
     """Draw edges on the graph"""
     edge_styles = set((s[2] for s in graph.edges(data='style')))
     for style in edge_styles:
@@ -65,9 +66,9 @@ def draw_edges(graph, pos, show_weights, node_size, edge_labels):
                                style=style[0],
                                edge_color=[style[1]]*1000,
                                width=style[2],
-                               connectionstyle="arc3"
+                               connectionstyle="arc3" if not arc else "arc3,rad=0.1",
                                )
-    if show_weights:
+    if show_edge_labels:
         nx.draw_networkx_edge_labels(graph, pos, edge_labels, label_pos=.75)
 
 
@@ -129,7 +130,7 @@ def add_nodes_to_graph(individual, node_labels, graph, required, visualize_disab
     add_output_nodes(individual, node_labels, graph)
 
 
-def visualize_network(individual, visualize_disabled=False, show_weights=False):
+def visualize_network(individual, visualize_disabled=False, show_edge_labels=False, arc=False):
     """Visualize a CPPN network"""
     node_labels = {}
     node_size = 10000 - len(individual.hidden_nodes) * 1000
@@ -157,6 +158,7 @@ def visualize_network(individual, visualize_disabled=False, show_weights=False):
         required = required_for_output(input_nodes, output,
                     [(cx.from_node, cx.to_node) for cx in\
                         copied_individual.enabled_connections()])
+
         required = required.union(input_nodes)
 
     # nodes:
@@ -167,22 +169,26 @@ def visualize_network(individual, visualize_disabled=False, show_weights=False):
     # force layers to be sorted on X axis
     x_pos = list(set([pos[n][0] for n in graph]))
     x_pos.sort()
+
     for k, v in pos.items():
         node = k
         node_layer = get_layer_of_node(node, layers)
         if node_layer is None:
+            pos[k] = (x_pos[0] - (1/len(layers)), v[1])
             continue
-            
         if node_layer < len(x_pos):
             pos[k] = [x_pos[node_layer],
                       v[1]]
+        if len(layers[node_layer]) == 1:
+            pos[k] = [v[0], (v[1]+(-1 if node_layer%2==0 else 1)) if node_layer < len(x_pos)-1 and node_layer>0 else v[1]]
+    
     # draw
     draw_nodes(graph, pos, node_labels, node_size)
 
     # edges:
     edge_labels = add_edges_to_graph(
         copied_individual, visualize_disabled, graph, pos, required)
-    draw_edges( graph, pos, show_weights, node_size, edge_labels)
+    draw_edges( graph, pos, show_edge_labels, node_size, edge_labels, arc)
 
     nx.draw_networkx_labels(graph, pos, labels=node_labels)
     plt.tight_layout()
