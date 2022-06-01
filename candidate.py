@@ -1,13 +1,13 @@
+#%%
 import copy
 import random
-from matplotlib import pyplot as plt
 import numpy as np
 import torch
-from fitness import activated_pixels_fitness, fitness_functions, pixel_distance_fitness, product_less
-from operations import all_operations
+import uuid
 
-from util import are_two_images_equals, feed_forward_layers, get_layer_of_node, is_solution, plot_one, required_for_output, show_image_list
-from visualize import visualize_network
+from fitness import fitness_functions, product_less
+from operations import all_operations
+from util import feed_forward_layers, find_node_with_uuid, get_disjoint_connections, get_excess_connections, get_layer_of_node, get_matching_connections
 
 prob_add_connection = 0.05
 prob_add_node = 0.05
@@ -17,80 +17,100 @@ prob_mutate_weight = 0.03
 prob_mutate_activation = 0.03
 prob_reenable_connection = .025
 
-initial_connection_prob =1.0
-initial_hidden = 0
-
+initial_connection_prob = 1.0
 
 use_weights = False
 max_weight = 9.0
 weight_mutation = 9.0
 
+initial_hidden = 0
+
 device = 'cpu'
 
-
+def random_weight():
+    return random.uniform(-max_weight,max_weight)
+def random_activation():
+    return random.choice(all_operations)
 
 class Node():
     def __init__(self, activation):
         self.activation = activation
         self.sum_inputs = []
         self.current_output = []
+        self.uuid = uuid.uuid4()
 
 class Connection():
     innovation = 0
-    def __init__(self, from_node, to_node, weight):
+    def __init__(self, from_node, to_node, weight, innovation=None):
         self.from_node = from_node
         self.to_node = to_node
         self.weight = weight
-        self.innovation = Connection.innovation
         self.enabled = True
+        if innovation is None:
+            self.innovation = Connection.innovation
+        else:
+            self.innovation = innovation
         Connection.innovation += 1
 
     def __iter__(self):
         return iter([self.from_node, self.to_node])
 
 class Candidate():
-    def __init__(self, num_inputs=1, num_outputs=1) -> None:
-        self.input_nodes = []
-        self.output_nodes = []
-        self.connections = []
-        self.hidden_nodes = []
 
+    @property
+    def input_nodes(self):
+        return self.nodes[0:self.num_inputs]
+    @property
+    def output_nodes(self):
+        return self.nodes[self.num_inputs:self.num_outputs+self.num_inputs]
+    @property
+    def hidden_nodes(self):
+        return self.nodes[self.num_inputs+self.num_outputs:]
+
+    def __init__(self, num_inputs=1, num_outputs=1) -> None:
+        self.nodes = []
+        self.connections = []
+        self.num_inputs = num_inputs
+        self.num_outputs = num_outputs
+        self.fitness = (torch.inf,)*len(fitness_functions)
+        
         for _ in range(num_inputs):
-            self.input_nodes.append(Node(random_activation()))
+            self.nodes.append(Node(random_activation()))
         for _ in range(num_outputs):
-            self.output_nodes.append(Node(random_activation()))
+            self.nodes.append(Node(random_activation()))
         for _ in range(initial_hidden):
-            self.hidden_nodes.append(Node(random_activation()))
+            self.nodes.append(Node(random_activation()))
 
         for inp in self.input_nodes:
             for h in self.hidden_nodes:
                 if random.random() < initial_connection_prob:
-                    self.connections.append(Connection(inp, h, random_weight()))
+                    self.connections.append(Connection(inp, h, random_weight(), innovation=len(self.connections)))
         if initial_hidden>0:
-            for h in self.hidden_nodes:
+            for i, h in enumerate(self.hidden_nodes):
                 for outp in self.output_nodes:
                     if random.random() < initial_connection_prob:
-                        self.connections.append(Connection(h, outp, random_weight()))
+                        self.connections.append(Connection(h, outp, random_weight(), innovation=len(self.connections)))
         else:
             for inp in self.input_nodes:
                 for outp in self.output_nodes:
                     if random.random() < initial_connection_prob:
-                        self.connections.append(Connection(inp, outp, random_weight()))
+                        self.connections.append(Connection(inp, outp, random_weight(), innovation=len(self.connections)))
+   
     def layers(self):
-        return feed_forward_layers(self.input_nodes, self.output_nodes, self.connections)
+        return feed_forward_layers(self.input_nodes, self.output_nodes, self.enabled_connections())
 
     def enabled_connections(self):
         return [cx for cx in self.connections if cx.enabled]
 
     def add_node(self):
         if len(self.connections) == 0:
-            self.hidden_nodes.append(Node(random_activation()))
+            self.nodes.append(Node(random_activation()))
             return
         # pick random connection to break
         cx = random.choice(self.connections)
         # create new node
         new_node = Node(random_activation())
-        self.hidden_nodes.append(new_node)
+        self.nodes.append(new_node)
         # create new connections
         new_connection_a = Connection(cx.from_node, new_node, 1.0)
         new_connection_b = Connection(new_node, cx.to_node, random_weight())
@@ -111,7 +131,7 @@ class Candidate():
         """Adds a connection to the CPPN."""
         for _ in range(20):  # try 20 times max
             [from_node, to_node] = np.random.choice(
-                self.input_nodes + self.output_nodes + self.hidden_nodes, 2, replace=False)
+                self.nodes, 2, replace=False)
             if from_node in self.output_nodes:
                 continue
             if to_node in self.input_nodes:
@@ -146,15 +166,14 @@ class Candidate():
 
             # else failed to find a valid connection, don't add and try again
 
-    def remove_connection(self):
+    def disable_connection(self):
         if len(self.connections) == 0:
             return
         cx = random.choice(self.connections)
-        # self.connections.remove(cx)
         cx.enabled = False
 
     def mutate_activations(self):
-        for node in self.hidden_nodes + self.output_nodes + self.input_nodes:
+        for node in self.nodes:
             if random.random() < prob_mutate_activation:
                 node.activation = random_activation()
 
@@ -177,13 +196,99 @@ class Candidate():
         if random.random() < prob_remove_node:
             self.remove_node()
         if random.random() < prob_remove_connection:
-            self.remove_connection()
+            self.disable_connection()
         self.mutate_weights()
         self.mutate_activations()
 
+    def crossover(self, other_parent):
+        """Crossover with another candidate using the method in Stanley and Miikkulainen (2007)."""
+        child = Candidate() # create child
+        
+        are_comparable = product_less(self.fitness, other_parent.fitness) or product_less(other_parent.fitness, self.fitness)
+        
+        if are_comparable:
+            # disjoint/excess genes are inherited from more fit parent
+            more_fit_parent = self if product_less(self.fitness, other_parent.fitness) else other_parent
+            # child.nodes = copy.deepcopy(more_fit_parent.nodes)
+            child.connections = copy.deepcopy(more_fit_parent.connections)
+        else:
+            # disjoint/excess genes are inherited randomly
+            match0, _ = get_matching_connections(self.connections, other_parent.connections)
+            excess_0 = get_excess_connections(self.connections, other_parent.connections)
+            disjoint_0 = get_disjoint_connections(self.connections, other_parent.connections)
+            excess_1 = get_excess_connections(other_parent.connections, self.connections)
+            disjoint_1 = get_disjoint_connections(other_parent.connections, self.connections)
+            all_exc = excess_0 + excess_1
+            all_dis = disjoint_0 + disjoint_1
+            child.connections = match0 + all_exc + all_dis
+            
+                
+            
+        # line up by innovation number and find matches
+        # child.connections.sort(key=lambda x: x.innovation)
+        matching1, matching2 = get_matching_connections(
+            self.connections, other_parent.connections)
+
+        for match_1, match_2 in zip(matching1, matching2):
+            child_cx = child.connections[[x.innovation\
+                for x in child.connections].index(
+                match_1.innovation)]
+
+            # Matching genes are inherited randomly
+            inherit_from_parent_1 = np.random.rand() < .5
+            if inherit_from_parent_1:
+                child_cx.weight = match_1.weight
+                new_from = copy.deepcopy(match_1.from_node)
+                new_to = copy.deepcopy(match_1.to_node)
+            else:
+                child_cx.weight = match_2.weight
+                new_from = copy.deepcopy(match_2.from_node)
+                new_to = copy.deepcopy(match_2.to_node)
+
+            # assign new nodes and connections
+            child_cx.from_node = new_from
+            child_cx.to_node = new_to
+
+            if(not match_1.enabled or not match_2.enabled):
+                if np.random.rand() < 0.75:  # 0.75 from Stanley/Miikulainen 2007
+                    child_cx.enabled = False
+
+
+        child.nodes = []
+        input_nodes = [x for x in self.input_nodes] + [x for x in other_parent.input_nodes]
+        output_nodes = [x for x in self.output_nodes] + [x for x in other_parent.output_nodes]
+        for cx in child.connections:
+            if find_node_with_uuid(child.nodes, cx.from_node.uuid) is None:
+                child.nodes.append(cx.from_node)
+            if find_node_with_uuid(child.nodes, cx.to_node.uuid) is None:
+                child.nodes.append(cx.to_node)
+        
+        # put input and output nodes in the right order
+        for node in output_nodes[::-1]:
+            if node in child.nodes:
+                child.nodes.insert(0, child.nodes.pop(child.nodes.index(node)))
+        for node in input_nodes[::-1]:
+            if node in child.nodes:
+                child.nodes.insert(0, child.nodes.pop(child.nodes.index(node)))
+        
+                            
+        for cx in child.connections:
+            cx.from_node = find_node_with_uuid(child.nodes, cx.from_node.uuid)
+            cx.to_node = find_node_with_uuid(child.nodes, cx.to_node.uuid)
+            
+            if cx.from_node is None or cx.to_node is None:
+                print(cx.from_node, cx.to_node)
+                print(child.nodes)
+                print(child.connections)
+                # exit(1)
+                raise Exception("Error: node not found in child")
+        
+        return child
+
+
     def reset_nodes(self):
         """Reset all nodes to their initial state."""
-        for node in self.hidden_nodes + self.output_nodes + self.input_nodes:
+        for node in self.nodes:
             node.current_output = []
 
     def evaluate(self, input_sample):
@@ -195,7 +300,8 @@ class Candidate():
             for _, node in enumerate(layer):
                 # iterate over nodes in layer
                 # find incoming connections
-                incoming = list(filter(lambda x, n=node: x.to_node == n, self.enabled_connections()))
+                incoming = list(filter(lambda x, n=node: x.to_node == n,
+                                       self.enabled_connections()))
                 # initialize the sum_inputs for this node
                 if layer_index == 0:
                     node.current_output = [input_sample]
@@ -215,7 +321,7 @@ class Candidate():
                     inputs = cx.from_node.current_output
                     assert isinstance(inputs, list)
 
-                    for i in range(len(inputs)):
+                    for i, _ in enumerate(inputs):
                         if use_weights:
                             inputs[i] = torch.mul(inputs[i].type(torch.float32), cx.weight)
 
@@ -224,8 +330,7 @@ class Candidate():
                         else:
                             node.current_output.append(inputs[i])
 
-
-                # normalize      
+                # normalize
                 for output_index, _ in enumerate(node.current_output):
                     node.current_output[output_index] = torch.nan_to_num(node.current_output[output_index], 0)
                     if node.current_output[output_index].numel() == 0:
@@ -237,12 +342,12 @@ class Candidate():
                         node.current_output[output_index] = (node.current_output[output_index] - min_value) / (max_value - min_value)
                         node.current_output[output_index] *= 9.0
                         node.current_output[output_index] = torch.round(node.current_output[output_index])
-                        
+
                     node.current_output[output_index] = node.current_output[output_index].type(torch.int8)
-                
+
                 node.current_output = [torch.nan_to_num(x, 0) for x in node.current_output]
                 node.current_output = node.activation(node.current_output)  # apply activation
-                
+
         # collect outputs from the last layer
         outputs = [o.current_output for o in self.output_nodes]
         # outputs = torch.tensor([node.current_output for node in output_nodes])
@@ -264,91 +369,140 @@ class Candidate():
                 else: # Take only the score of the first output
                     images = outputs[0] # take first output neuron, list of pixmaps
                     images = [img for img in images if img.shape[0] > 0 and img.shape[1] > 0]
-                    
+
                     if len(images) == 0:
                         score[sample_index][fit_index] += 5000
                         continue
-                    
+
                     guesses = images
                     guesses = guesses[:3] # only take the first 3 guesses
                     score[sample_index][fit_index] = min([fitness_function(img, o) for img in guesses])
-            
+
         score = score.sum(dim=0)
+        self.fitness = score
         return tuple(score)
-
-def random_weight():
-    return random.uniform(-max_weight,max_weight)
-def random_activation():
-    return random.choice(all_operations)
-
-
-def pad_to_same(x, y):
-    # pad the output to match the input
-    if x.shape[-2] < y.shape[-2]:
-        x = torch.nn.functional.pad(x, (0,0, y.shape[-2] - x.shape[-2], 0), value=-1)
-    elif x.shape[-2] > y.shape[-2]:
-        y = torch.nn.functional.pad(y, (0,0, x.shape[-2] - y.shape[-2], 0), value=-1)
-    if x.shape[-1] < y.shape[-1]:
-        x = torch.nn.functional.pad(x, (0, y.shape[-1] - x.shape[-1], 0, 0), value=-1)
-    elif x.shape[-1] > y.shape[-1]:
-        y = torch.nn.functional.pad(y, (0, x.shape[-1] - y.shape[-1], 0, 0), value=-1)
-    return x, y
-
 
 if __name__ == "__main__":
     from util import plot_task
     import os
     import json
     from tqdm.notebook import trange
+    from util import is_solution, show_image_list
     from operations import *
+    from fitness import product_less
+    from visualize import visualize_network
+    
+    Connection.innovation = 0
+    
     TRAIN_PATH = './ARC/data/training'
     training_tasks = sorted(os.listdir(TRAIN_PATH))
-    
 
     # easy tasks: 13, 30, 115
+    # other solved tasks: 371
 
     task = training_tasks[115]
     task_path = os.path.join(TRAIN_PATH, task)
     with open(task_path, 'r') as f:
         task_ = json.load(f)
-    task = task_    
-    plot_task(task)
+    task = task_
+    # plot_task(task)
     task = task_['train']
     task = task[0]
 
-    test_candidate = Candidate()
-    test_candidate.input_nodes[0].activation = identity
-    test_candidate.hidden_nodes.append(Node(activation=flip_v))
-    # test_candidate.hidden_nodes.append(Node(activation=identity))
-    # test_candidate.hidden_nodes.append(Node(activation=stack_row))
-
-    test_candidate.output_nodes[0].activation = stack_row
-    test_candidate.connections = []
-    test_candidate.connections.append(Connection(test_candidate.input_nodes[0], test_candidate.hidden_nodes[0], weight=1))
-    test_candidate.connections.append(Connection(test_candidate.input_nodes[0], test_candidate.output_nodes[0], weight=1))
-    test_candidate.connections.append(Connection(test_candidate.hidden_nodes[0], test_candidate.output_nodes[0], weight=1))
-    # test_candidate.connections.append(Connection(test_candidate.hidden_nodes[1], test_candidate.hidden_nodes[2], weight=1))
-    # test_candidate.connections.append(Connection(test_candidate.hidden_nodes[2], test_candidate.output_nodes[0], weight=1))
+    # test_candidate = Candidate()
+    # # test_candidate.mutate()
+    # # test_candidate.mutate()
+    # test_candidate.add_node()
+    # test_candidate.add_node()
+    # test_candidate.add_node()
+    # test_candidate.add_connection()
     
-    visualize_network(test_candidate, visualize_disabled=True)
-    i = torch.tensor(task['input']).to(device)
-    o = torch.tensor(task['output']).to(device)
-    i = i.type(torch.FloatTensor).clone()
-    o = o.type(torch.FloatTensor).clone()
+    # test_candidate.evaluate_fitness(task_["train"])
 
+    # test_candidate_2 = copy.deepcopy(test_candidate)
 
-    output = test_candidate.evaluate(i)
-    output = output[0]
-    show_image_list([i, o] + output, ["Input", "Output"] + [f"Prediction {i}" for i in range(len(output))])
-    sol = is_solution(test_candidate, task_['test'])
-    print(sol)
-    raise Exception("This is a test")
+    # test_candidate.add_node()
 
+    # test_candidate_2.add_node()
+    # test_candidate_2.add_node()
+    # test_candidate_2.mutate_activations()
+    # test_candidate_2.mutate_activations()
+    # test_candidate_2.mutate_activations()
+    # test_candidate_2.mutate_activations()
+    # test_candidate_2.mutate_activations()
+    # test_candidate_2.mutate_activations()
+    # test_candidate.add_connection()
+    # test_candidate_2.add_node()
+    # test_candidate_2.add_node()
+    # test_candidate_2.evaluate_fitness(task_["train"])
+    
+    # more_fit_parent = test_candidate if product_less(test_candidate.fitness, test_candidate_2.fitness) else test_candidate_2
+    # other_parent = test_candidate if more_fit_parent == test_candidate_2 else test_candidate_2
+    
+    # visualize_network(more_fit_parent, visualize_disabled=True)
+    # visualize_network(other_parent, visualize_disabled=True)
+    
+    # print("1st parent" if more_fit_parent == test_candidate else "2nd parent")
+    
+    # print("parent1:", [cx.innovation for cx in more_fit_parent.connections])
+    # print("parent2:", [cx.innovation for cx in other_parent.connections])
+    
+    # matching_1, matching_2 = get_matching_connections(more_fit_parent.connections, other_parent.connections)
+    # print("matching1:", [cx.innovation for cx in matching_1])
+    # print("matching2:", [cx.innovation for cx in matching_2])
+    
+    # disjoint1 = get_disjoint_connections(more_fit_parent.connections, other_parent.connections)
+    # disjoint2 = get_disjoint_connections(other_parent.connections, more_fit_parent.connections)
+    # print("disjoint1:", [cx.innovation for cx in disjoint1])
+    # print("disjoint2:", [cx.innovation for cx in disjoint2])
     
     
+    # excess1 = get_excess_connections(more_fit_parent.connections, other_parent.connections)
+    # excess2 = get_excess_connections(other_parent.connections, more_fit_parent.connections)
+    # print("excess1:", [cx.innovation for cx in excess1])
+    # print("excess2:", [cx.innovation for cx in excess2])
+    
+    
+    # child = more_fit_parent.crossover(test_candidate_2)
+    # visualize_network(child, visualize_disabled=True)
+    # child.evaluate_fitness(task_["train"])
+    # print("num cxs:", len(child.connections), "num nodes:", len(child.nodes))
+    # print("more_fit:", more_fit_parent.fitness, "\ntest_2:", other_parent.fitness, "\nchild:", child.fitness)
+    
+    # raise Exception("This is a test")
+    
+    
+    
+    # test_candidate.nodes[0].activation = identity # input
+    # test_candidate.nodes[1].activation = stack_row # output
+    
+    # test_candidate.nodes.append(Node(activation=flip_v))
+    # # test_candidate.hidden_nodes.append(Node(activation=identity))
+    # # test_candidate.hidden_nodes.append(Node(activation=stack_row))
+
+    # test_candidate.connections = []
+    # test_candidate.connections.append(Connection(test_candidate.nodes[0], test_candidate.nodes[2], weight=1))
+    # test_candidate.connections.append(Connection(test_candidate.nodes[0], test_candidate.nodes[1], weight=1))
+    # test_candidate.connections.append(Connection(test_candidate.nodes[2], test_candidate.nodes[1], weight=1))
+    # # test_candidate.connections.append(Connection(test_candidate.hidden_nodes[1], test_candidate.hidden_nodes[2], weight=1))
+    # # test_candidate.connections.append(Connection(test_candidate.hidden_nodes[2], test_candidate.output_nodes[0], weight=1))
+
+    # visualize_network(test_candidate, visualize_disabled=True)
+    # i = torch.tensor(task['input']).to(device)
+    # o = torch.tensor(task['output']).to(device)
+    # i = i.type(torch.FloatTensor).clone()
+    # o = o.type(torch.FloatTensor).clone()
+
+
+    # output = test_candidate.evaluate(i)
+    # output = output[0]
+    # show_image_list([i, o] + output, ["Input", "Output"] + [f"Prediction {i}" for i in range(len(output))])
+    # sol = is_solution(test_candidate, task_['test'])
+    # print("is solution:", sol)
+
     # tasks = training_tasks[:5]
     # random.shuffle(training_tasks)
-    tasks = [30]
+    tasks = [371]
     # hillclimber
     for task_id in tasks:
         task = training_tasks[task_id]
@@ -370,6 +524,7 @@ if __name__ == "__main__":
                 parent_score = child_score
                 if is_solution(parent, task):
                     print("solution found")
+                    visualize_network(parent)
                     p.close()
                     break
             # if product_less(child_score, parent_score):
@@ -382,18 +537,4 @@ if __name__ == "__main__":
         # plt.plot(scores)
         print(tuple(parent_score))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# %%

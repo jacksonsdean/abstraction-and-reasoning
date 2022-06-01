@@ -55,9 +55,21 @@ def build_candidates(best_candidates=[], length_limit=4, nb_candidates=100):
             new_candidates += [Candidate()]
         
         # Create new programs based on each best candidate
-        for best_program in best_candidates:
-            new_candidates += [copy.deepcopy(best_program)]
-            new_candidates[-1].mutate()
+        # for best_program in best_candidates:
+        #     new_candidates += [copy.deepcopy(best_program)]
+        #     new_candidates[-1].mutate()
+        
+        # create 10 crossovers
+        if len(best_candidates) > 0:
+            for _ in range(10):
+                # Select two parents
+                parent_1 = random.choice(list(best_candidates))
+                parent_2 = random.choice(list(best_candidates))
+                # Create a child
+                child = parent_1.crossover(parent_2)
+                child.mutate()
+                # Add the child to the pool
+                new_candidates += [child]    
    
     # Truncate if we have too many candidates
     random.shuffle(new_candidates)
@@ -65,7 +77,7 @@ def build_candidates(best_candidates=[], length_limit=4, nb_candidates=100):
 
 
 #%%
-def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbose=False, task_id=0, nb_candidates=100,show_progress=False):
+def pareto_front_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbose=False, task_id=0, nb_candidates=100,show_progress=False):
     if verbose:
         print("Candidates nodes are:", [program_desc([n]) for n in candidates_nodes])
         print()
@@ -85,12 +97,13 @@ def build_model(task, candidates_nodes, max_iterations=50, length_limit=4, verbo
         # where the key of each program is its fitness score.
         for _, candidate in enumerate(candidates):
             score = candidate.evaluate_fitness(task)
-            is_incomparable = True # True if we cannot compare the two candidate's scores
+            is_incomparable = True # True if we cannot compare this candidates score with any other
             
             # Compare the new candidate to the existing best candidates
             best_candidates_items = list(best_candidates.items())
             for best_score, best_candidate in best_candidates_items:
                 if product_less(score, best_score):
+                    # dominates this best candidate
                     # Remove previous best candidate and add the new one
                     del best_candidates[best_score]
                     best_candidates[score] = candidate
@@ -167,9 +180,9 @@ print([n.__name__ for n in all_operations])
 show_progress = True
 do_shuffle = True
 
-per_task_iterations = 10
+per_task_iterations = 50
 length_limit = 4 # Maximal length of a program
-pop_size = 2000
+pop_size = 200
 
 num_correct = 0
 num_total = 0
@@ -192,7 +205,7 @@ for task_id in pbar:
         with open(task_file, 'r') as f:
             task = json.load(f)
 
-        program = build_model(task['train'], candidates_nodes, max_iterations=per_task_iterations, length_limit=length_limit, verbose=False, task_id=indx,nb_candidates=pop_size, show_progress=show_progress)
+        program = pareto_front_model(task['train'], candidates_nodes, max_iterations=per_task_iterations, length_limit=length_limit, verbose=False, task_id=indx,nb_candidates=pop_size, show_progress=show_progress)
         pbar.set_description_str(f"{num_correct/num_total}")
         
         if program is None:
@@ -208,9 +221,9 @@ for task_id in pbar:
             # visualize_network(program)
     except KeyboardInterrupt:
         break
-    except Exception as e:
-        print(type(e), e)
-        continue
+    # except Exception as e:
+    #     print(type(e), e)
+    #     continue
 
 plt.bar(list(used_nodes.keys()), list(used_nodes.values()))
 plt.show()

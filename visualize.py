@@ -142,7 +142,7 @@ def visualize_network(individual, visualize_disabled=False, show_weights=False):
     plt.subplots_adjust(left=0, bottom=0, right=1.25,
                         top=1.25, wspace=0, hspace=0)
 
-    for node in copied_individual.input_nodes + copied_individual.hidden_nodes + copied_individual.output_nodes:
+    for node in copied_individual.nodes:
         node.layer = -1
 
     for layer_index, layer in enumerate(layers):
@@ -150,9 +150,9 @@ def visualize_network(individual, visualize_disabled=False, show_weights=False):
             node.layer = layer_index
 
     if visualize_disabled:
-        required = [n for n in copied_individual.input_nodes+copied_individual.hidden_nodes+copied_individual.output_nodes]
+        required = copied_individual.nodes
     else:
-        input_nodes = [n for n in copied_individual.input_nodes]
+        input_nodes = copied_individual.input_nodes
         output = [n for n in copied_individual.output_nodes]
         required = required_for_output(input_nodes, output,
                     [(cx.from_node, cx.to_node) for cx in\

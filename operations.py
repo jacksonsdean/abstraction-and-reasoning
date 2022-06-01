@@ -418,5 +418,5 @@ all_operations = [
 # swap color:
 for in_out in itertools.permutations(range(10), 2):
     func = partial(swap_color, color_a=in_out[0], color_b=in_out[1])
-    func.__name__ = f"swap_color:{in_out[0]}->{in_out[1]}"
+    func.__name__ = f"swap{in_out[0]}->{in_out[1]}"
     all_operations.append(func)        

@@ -132,6 +132,42 @@ def get_candidate_nodes(s, connections):
     return set(b for (a, b) in connections if a in s and b not in s)
 
 
+
+def get_disjoint_connections(this_cxs, other_cxs):
+    """returns connections in this_cxs that do not share an innovation number with a
+        connection in other_innovation"""
+    other_innovation = [cx.innovation for cx in other_cxs]
+    if(len(this_cxs) == 0 or len(other_innovation) == 0):
+        return []
+    return [t_cx for t_cx in this_cxs if\
+        (t_cx.innovation not in other_innovation and t_cx.innovation < max(other_innovation))]
+
+
+def get_excess_connections(this_cxs, other_cxs):
+    """returns connections in this_cxs that share an innovation number with a
+        connection in other_innovation"""
+    other_innovation = [cx.innovation for cx in other_cxs]
+    if(len(this_cxs) == 0 or len(other_innovation) == 0):
+        return []
+    return [t_cx for t_cx in this_cxs if\
+            (t_cx.innovation not in other_innovation and t_cx.innovation > max(other_innovation))]
+
+
+def get_matching_connections(cxs_1, cxs_2):
+    """returns connections in cxs_1 that share an innovation number with a connection in cxs_2
+       and     connections in cxs_2 that share an innovation number with a connection in cxs_1"""
+    return sorted([c1 for c1 in cxs_1 if c1.innovation in [c2.innovation for c2 in cxs_2]],
+                    key=lambda x: x.innovation),\
+                    sorted([c2 for c2 in cxs_2 if c2.innovation in [c1.innovation for c1 in cxs_1]],
+                    key=lambda x: x.innovation)
+
+
+def find_node_with_uuid(nodes, uuid):
+    for n in nodes:
+        if n.uuid == uuid:
+            return n
+    return None
+
 # Functions below are modified from other packages
 
 ###############################################################################################
